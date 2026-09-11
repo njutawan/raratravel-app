@@ -1,0 +1,9 @@
+# CONTOH — salin file ini menjadi "key.properties" (buang .example),
+# lalu isi sesuai keystore kamu. Caranya: lihat PANDUAN_BUILD_APK.md langkah 3.
+#
+# PENTING: jangan pernah commit/upload key.properties & file .jks ke mana pun!
+
+storePassword=ISI_PASSWORD_KEYSTORE_KAMU
+keyPassword=ISI_PASSWORD_KEY_KAMU
+keyAlias=rara-travel
+storeFile=C:/Users/NAMA-KAMU/upload-keystore.jks

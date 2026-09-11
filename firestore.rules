@@ -1,0 +1,43 @@
+rules_version = '2';
+
+// Rara Travel & Tour — aturan keamanan Firestore.
+// Deploy: Firebase Console → Firestore Database → Rules → paste → Publish.
+//
+// Prinsip: setiap dokumen terikat ke pemiliknya (userId), dicek di SERVER
+// sehingga aplikasi yang dimodifikasi / script luar tidak bisa curang.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Profil user: hanya pemilik yang boleh baca/tulis.
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Pesanan: ID dokumen = kode booking.
+    // (Admin via Console memakai hak admin, tidak terpengaruh rules ini.)
+    match /bookings/{kode} {
+      // Buat: wajib login + userId & kode harus milik sendiri → user tak bisa
+      // menitipkan pesanan palsu ke riwayat akun orang lain.
+      allow create: if request.auth != null
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.kode == kode;
+
+      // Baca & hapus: hanya pemilik.
+      allow read, delete: if request.auth != null
+        && resource.data.userId == request.auth.uid;
+
+      // Ubah: hanya pemilik + userId & kode TAK BOLEH diganti
+      // (mencegah pengalihan kepemilikan pesanan).
+      allow update: if request.auth != null
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.kode == resource.data.kode;
+    }
+    // Hitungan rate limit: HANYA server (Cloud Functions via Admin SDK)
+    // yang boleh baca/tulis. Klien & script luar DITOLAK agar hitungan
+    // tidak bisa dimanipulasi/di-reset oleh spammer.
+    match /rateLimits/{id} {
+      allow read, write: if false;
+    }
+  }
+}

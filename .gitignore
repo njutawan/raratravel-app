@@ -1,0 +1,26 @@
+# Flutter/Dart
+.dart_tool/
+.packages
+build/
+*.apk
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Android (hasil build & setting lokal)
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+android/.cxx/
+
+# RAHASIA — jangan pernah commit key rilis!
+android/key.properties
+*.jks
+*.keystore
+
+# Python tools
+__pycache__/
+
+# OS
+.DS_Store
+Thumbs.db
