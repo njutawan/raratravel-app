@@ -56,6 +56,21 @@ raratravel_app/
 
 ## 🚀 Cara Menjalankan
 
+### Konfigurasi Supabase (opsional selama migrasi)
+
+Firebase Auth dan FCM tetap digunakan. Supabase menjadi target katalog dan
+backend baru. Jangan commit key ke repository; berikan konfigurasi saat build:
+
+```powershell
+flutter pub get
+flutter run --dart-define=SUPABASE_URL=https://PROJECT.supabase.co `
+  --dart-define=SUPABASE_ANON_KEY=ANON_KEY
+```
+
+Migration PostgreSQL berada di `supabase/migrations/`. Jalankan dengan
+Supabase CLI setelah membuat project Supabase. Alur booking lama Firestore
+tetap dipertahankan sampai endpoint Edge Function dan migrasi data selesai.
+
 ### 1. Installalat (sekali saja)
 
 1. Install **Flutter SDK** (versi 3.32 atau lebih baru — disarankan stabil terbaru): <https://docs.flutter.dev/get-started/install>
