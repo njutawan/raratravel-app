@@ -22,8 +22,6 @@ class CatalogPage<T> {
   });
 
   bool get hasMore => offset + items.length < total;
-
-  static const kosong = CatalogPage(items: [], total: 0, limit: 0, offset: 0);
 }
 
 /// Katalog dari Supabase (`search-routes`), dengan data lokal sebagai cadangan.

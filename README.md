@@ -42,10 +42,18 @@ raratravel_app/
 │   ├── utils/
 │   │   ├── constants.dart       # ⭐ NOMOR WA, ALAMAT, KOTA — ubah di sini
 │   │   └── formatters.dart      # format Rp & tanggal Indonesia
+│   ├── config/
+│   │   ├── supabase_config.dart # URL + anon key (dari --dart-define)
+│   │   └── backend_config.dart  # ⭐ sakelar migrasi (katalog/pesanan/bayar)
 │   ├── models/                  # TravelRoute, Armada, WisataPaket, Booking
-│   ├── data/dummy_data.dart     # ⭐ RUTE, HARGA, JADWAL — ubah di sini
+│   ├── data/dummy_data.dart     # ⭐ RUTE, HARGA, JADWAL (sumber data lokal)
+│   ├── repositories/            # jembatan ke Edge Function Supabase
+│   │   ├── booking_repository.dart
+│   │   ├── catalog_repository.dart
+│   │   └── payment_repository.dart
 │   ├── services/
 │   │   ├── booking_storage.dart # simpan riwayat (SharedPreferences)
+│   │   ├── edge_client.dart     # panggil Edge Function + token Firebase
 │   │   └── whatsapp_service.dart# buka WA / telepon / email / link
 │   ├── widgets/                 # kartu rute, judul seksi, badge, dll.
 │   └── screens/                 # 11 layar (splash → profil)
@@ -85,7 +93,7 @@ Berkas terkait:
 
 | Berkas | Isi |
 |---|---|
-| `docs/MIGRASI_SUPABASE.md` | panduan lengkap: deploy, secrets, uji, impor data, rollback |
+| `MIGRASI_SUPABASE.md` | panduan lengkap: deploy, secrets, uji, impor data, rollback |
 | `supabase/migrations/*.sql` | 11 berkas migrasi (skema, RPC, trigger, seed, storage, admin) |
 | `supabase/functions/` | 10 Edge Function (auth sync, katalog, booking, bayar, notifikasi, admin) |
 | `lib/config/backend_config.dart` | sakelar migrasi di sisi aplikasi |

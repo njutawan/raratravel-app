@@ -288,4 +288,4 @@ Promo `RARAHEMAT`: potongan 10%, maksimal Rp50.000.
 | `tools/generate_catalog_seed.py` | membuat ulang seed katalog dari `dummy_data.dart` |
 | `lib/config/backend_config.dart` | sakelar migrasi di sisi aplikasi |
 | `lib/repositories/*.dart` | jembatan aplikasi → Edge Function |
-| `docs/PANDUAN_FIREBASE.md` | setup Firebase (Auth, FCM, Firestore) |
+| `PANDUAN_FIREBASE.md` | setup Firebase (Auth, FCM, Firestore) |

@@ -39,7 +39,7 @@ done
 ```
 
 Secret lengkap (termasuk FCM & pembayaran) ada di
-[`docs/MIGRASI_SUPABASE.md`](../../docs/MIGRASI_SUPABASE.md) §3.
+[`MIGRASI_SUPABASE.md`](../../MIGRASI_SUPABASE.md) §3.
 
 ## Contoh panggilan
 

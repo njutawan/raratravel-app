@@ -355,7 +355,7 @@ begin
     where exists (select 1 from cron.job j where j.jobname = 'rara-drain-notifications');
 
   if v_url is null then
-    raise notice 'app.settings.notify_endpoint belum diisi — cron drain dilewati. Lihat docs/MIGRASI_SUPABASE.md.';
+    raise notice 'app.settings.notify_endpoint belum diisi — cron drain dilewati. Lihat MIGRASI_SUPABASE.md.';
     return;
   end if;
 
