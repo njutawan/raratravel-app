@@ -390,7 +390,8 @@ Deno.serve(async (req) => {
     }
     switch (action) {
       case "legacy-bookings": {
-        const batch = body.bookings ?? [];
+        const rawItems = body.bookings ?? body.items;
+        const batch = Array.isArray(rawItems) ? rawItems : [];
         if (!Array.isArray(batch) || batch.length === 0) {
           return errorResponse("validation_error", "bookings harus berisi minimal satu pesanan", 400, void 0, origin);
         }

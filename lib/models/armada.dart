@@ -16,7 +16,7 @@ class Armada {
     required this.kapasitas,
     required this.hargaSewa,
     this.hargaLepasKunci = 0,
-    required this.fitur,
-    required this.deskripsi,
+    this.fitur = const [],
+    this.deskripsi = '',
   });
 }

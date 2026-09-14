@@ -34,6 +34,8 @@ class _SearchScreenState extends State<SearchScreen> {
   late DateTime _tanggal;
   bool _termurahDulu = true;
 
+  List<String> _cities = AppConstants.cities;
+
   // Hasil dari server (null → tampilkan data lokal lebih dulu).
   List<TravelRoute>? _dariServer;
   bool _memuatServer = false;
@@ -45,7 +47,19 @@ class _SearchScreenState extends State<SearchScreen> {
     _tujuan = widget.initialTujuan;
     _tanggal =
         widget.initialTanggal ?? DateTime.now().add(const Duration(days: 1));
+    _muatKota();
     _cariDariServer();
+  }
+
+  Future<void> _muatKota() async {
+    if (!CatalogRepository.enabled) return;
+    try {
+      final cities = await CatalogRepository.cities();
+      if (!mounted) return;
+      if (cities.isNotEmpty) {
+        setState(() => _cities = cities);
+      }
+    } catch (_) {}
   }
 
   /// Ambil hasil dari katalog server (harga & kursi terbaru dari admin).
@@ -104,7 +118,6 @@ class _SearchScreenState extends State<SearchScreen> {
     if (picked != null) _ubahFilter(() => _tanggal = picked);
   }
 
-  @override
   @override
   Widget build(BuildContext context) {
     final hasil = _hasil;
@@ -172,22 +185,24 @@ class _SearchScreenState extends State<SearchScreen> {
   List<Widget> _filterFields() {
     return [
       DropdownButtonFormField<String>(
-        initialValue: _asal,
+        key: ValueKey('search_asal_$_asal'),
+        initialValue: _asal == null || _cities.contains(_asal) ? _asal : null,
         decoration: const InputDecoration(labelText: 'Dari', isDense: true),
         items: [
           const DropdownMenuItem<String>(value: null, child: Text('Semua')),
-          ...AppConstants.cities.map(
+          ..._cities.map(
             (c) => DropdownMenuItem(value: c, child: Text(c)),
           ),
         ],
         onChanged: (v) => _ubahFilter(() => _asal = v),
       ),
       DropdownButtonFormField<String>(
-        initialValue: _tujuan,
+        key: ValueKey('search_tujuan_$_tujuan'),
+        initialValue: _tujuan == null || _cities.contains(_tujuan) ? _tujuan : null,
         decoration: const InputDecoration(labelText: 'Ke', isDense: true),
         items: [
           const DropdownMenuItem<String>(value: null, child: Text('Semua')),
-          ...AppConstants.cities.map(
+          ..._cities.map(
             (c) => DropdownMenuItem(value: c, child: Text(c)),
           ),
         ],

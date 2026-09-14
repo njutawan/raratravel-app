@@ -1,14 +1,47 @@
 import 'package:flutter/material.dart';
 import '../data/dummy_data.dart';
 import '../models/wisata_paket.dart';
+import '../repositories/catalog_repository.dart';
 import '../services/whatsapp_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/formatters.dart';
 import '../widgets/adaptive.dart';
 
 /// Layar paket wisata (open trip / private trip).
-class WisataScreen extends StatelessWidget {
+class WisataScreen extends StatefulWidget {
   const WisataScreen({super.key});
+
+  @override
+  State<WisataScreen> createState() => _WisataScreenState();
+}
+
+class _WisataScreenState extends State<WisataScreen> {
+  List<WisataPaket> _wisata = DummyData.wisata;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _muatData();
+  }
+
+  Future<void> _muatData() async {
+    if (!CatalogRepository.enabled) return;
+    setState(() => _loading = true);
+    try {
+      final list = await CatalogRepository.tours();
+      if (!mounted) return;
+      if (list.isNotEmpty) {
+        setState(() => _wisata = list);
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _handleRefresh() async {
+    CatalogRepository.clearCache();
+    await _muatData();
+  }
 
   void _pesan(WisataPaket p) {
     final msg = StringBuffer()
@@ -33,169 +66,191 @@ class WisataScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Paket Wisata')),
-      body: ListView.separated(
-        padding: Adaptive.pagePadding(context, vertical: 14, min: 14),
-        itemCount: DummyData.wisata.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 10),
-        itemBuilder: (_, i) {
-          final p = DummyData.wisata[i];
-          return Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: p.tipe == 'Open Trip'
-                              ? Colors.green.shade100
-                              : Colors.purple.shade100,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          p.tipe,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: p.tipe == 'Open Trip'
-                                ? Colors.green.shade800
-                                : Colors.purple.shade800,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          p.durasi,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    p.nama,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 17,
-                    ),
-                  ),
-                  Text(
-                    p.lokasi,
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    p.deskripsi,
-                    style: TextStyle(
-                      color: Colors.grey.shade800,
-                      fontSize: 13,
-                      height: 1.5,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Highlight:',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                  ),
-                  ...p.highlight.map(
-                    (h) => Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.place,
-                            size: 16,
-                            color: AppTheme.accentDark,
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              h,
-                              style: const TextStyle(fontSize: 13),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Sudah termasuk:',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                  ),
-                  ...p.include.map(
-                    (f) => Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.check_circle,
-                            size: 16,
-                            color: Colors.green,
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              f,
-                              style: const TextStyle(fontSize: 13),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const Divider(height: 20),
-                  Row(
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Mulai dari',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                          Text(
-                            Formatters.idr(p.harga),
-                            style: const TextStyle(
-                              fontSize: 19,
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.primary,
-                            ),
-                          ),
-                          Text(
-                            '/pax',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const Spacer(),
-                      FilledButton(
-                        onPressed: () => _pesan(p),
-                        child: const Text('Tanya & Pesan'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+      body: RefreshIndicator(
+        onRefresh: _handleRefresh,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: Adaptive.pagePadding(context, vertical: 14, min: 14),
+          children: [
+            if (_loading) const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: LinearProgressIndicator(minHeight: 3),
             ),
-          );
-        },
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _wisata.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              itemBuilder: (_, i) {
+                final p = _wisata[i];
+                return Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: p.tipe == 'Open Trip'
+                                    ? Colors.green.shade100
+                                    : Colors.purple.shade100,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                p.tipe,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: p.tipe == 'Open Trip'
+                                      ? Colors.green.shade800
+                                      : Colors.purple.shade800,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                p.durasi,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          p.nama,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 17,
+                          ),
+                        ),
+                        if (p.lokasi.isNotEmpty) ...[
+                          Text(
+                            p.lokasi,
+                            style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                          ),
+                        ],
+                        if (p.deskripsi.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            p.deskripsi,
+                            style: TextStyle(
+                              color: Colors.grey.shade800,
+                              fontSize: 13,
+                              height: 1.5,
+                            ),
+                          ),
+                        ],
+                        if (p.highlight.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Highlight:',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                          ...p.highlight.map(
+                            (h) => Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.place,
+                                    size: 16,
+                                    color: AppTheme.accentDark,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      h,
+                                      style: const TextStyle(fontSize: 13),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                        if (p.include.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Sudah termasuk:',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                          ...p.include.map(
+                            (f) => Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.check_circle,
+                                    size: 16,
+                                    color: Colors.green,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      f,
+                                      style: const TextStyle(fontSize: 13),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                        const Divider(height: 20),
+                        Row(
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Mulai dari',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                                Text(
+                                  Formatters.idr(p.harga),
+                                  style: const TextStyle(
+                                    fontSize: 19,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.primary,
+                                  ),
+                                ),
+                                Text(
+                                  '/pax',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const Spacer(),
+                            FilledButton(
+                              onPressed: () => _pesan(p),
+                              child: const Text('Tanya & Pesan'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }

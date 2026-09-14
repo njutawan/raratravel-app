@@ -411,7 +411,23 @@ begin
                  and pr.valid_from <= current_date
                  and (pr.valid_until is null or pr.valid_until >= current_date)),
              0
-           ) as price
+           ) as price_from,
+           coalesce(
+             (select max(pr.price)
+                from public.rental_package_prices pr
+               where pr.rental_package_id = p.id
+                 and pr.valid_from <= current_date
+                 and (pr.valid_until is null or pr.valid_until >= current_date)),
+             0
+           ) as price_driver,
+           coalesce(
+             (select jsonb_agg(pr.price order by pr.valid_from, pr.price desc)
+                from public.rental_package_prices pr
+               where pr.rental_package_id = p.id
+                 and pr.valid_from <= current_date
+                 and (pr.valid_until is null or pr.valid_until >= current_date)),
+             '[]'::jsonb
+           ) as prices
       from public.rental_packages p
       join public.cities c on c.id = p.city_id
       left join public.vehicles v on v.id = p.vehicle_id
@@ -424,11 +440,14 @@ begin
            'duration_days', d.duration_days, 'description', d.description,
            'image_path', d.image_path, 'city', d.city_name,
            'vehicle_name', d.vehicle_name, 'vehicle_type', d.vehicle_type,
-           'seat_capacity', d.seat_capacity, 'price_from', d.price
-         ) order by d.price, d.name), '[]'::jsonb),
+           'seat_capacity', d.seat_capacity, 'price_from', d.price_from,
+           'price_driver', d.price_driver,
+           'price_self_drive', case when jsonb_array_length(d.prices) > 1 then d.price_from else 0 end,
+           'prices', d.prices
+         ) order by d.price_from, d.name), '[]'::jsonb),
          (select count(*)::integer from dasar)
     into v_items, v_total
-    from (select * from dasar order by price, name limit v_limit offset v_offset) d;
+    from (select * from dasar order by price_from, name limit v_limit offset v_offset) d;
 
   return jsonb_build_object(
     'items', coalesce(v_items, '[]'::jsonb),

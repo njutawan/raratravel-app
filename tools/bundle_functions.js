@@ -43,7 +43,7 @@ async function muatEsbuild() {
       /* coba kandidat berikutnya */
     }
   }
-  // Cadangan terakhir: perintah `esbuild` di PATH (Windows memakai shell).
+  // Cadangan terakhir: perintah `esbuild` atau `npx esbuild` di PATH.
   return {
     build: async (opsi) => {
       const args = [
@@ -57,10 +57,17 @@ async function muatEsbuild() {
         `--banner:js=${opsi.banner.js}`,
         `--outfile=${opsi.outfile}`,
       ];
-      execFileSync("esbuild", args, {
-        stdio: ["ignore", "ignore", "pipe"],
-        shell: process.platform === "win32",
-      });
+      try {
+        execFileSync("esbuild", args, {
+          stdio: ["ignore", "ignore", "pipe"],
+          shell: process.platform === "win32",
+        });
+      } catch {
+        execFileSync("npx", ["--yes", "esbuild", ...args], {
+          stdio: ["ignore", "ignore", "pipe"],
+          shell: process.platform === "win32",
+        });
+      }
     },
   };
 }
