@@ -103,14 +103,26 @@ class AuthService {
   static Future<void> deleteAccount() async {
     final user = _auth.currentUser;
     if (user == null) return;
-    await FirestoreService.deleteAllUserData(user.uid);
-    // Catatan: penghapusan akun di PostgreSQL dilakukan lewat Edge Function
-    // admin (lihat MIGRASI_SUPABASE.md) agar kursi & tagihan ikut ditutup rapi.
+    if (FirebaseBootstrap.ready && BackendConfig.writeFirestore) {
+      try {
+        await FirestoreService.deleteAllUserData(user.uid);
+      } catch (_) {}
+    }
+    if (EdgeClient.ready) {
+      try {
+        await EdgeClient.invoke(
+          'auth-user-sync',
+          body: {'action': 'unregister-device'},
+          auth: true,
+        );
+      } catch (_) {}
+    }
     await user.delete();
     try {
       await GoogleSignIn().signOut();
     } catch (_) {}
     await BookingStorage.clear();
+    EdgeClient.resetToken();
   }
 
   /// Login dengan akun Google. Kembalikan credential,

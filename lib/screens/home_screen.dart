@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import '../data/dummy_data.dart';
+import '../models/armada.dart';
+import '../models/travel_route.dart';
+import '../repositories/catalog_repository.dart';
 import '../services/whatsapp_service.dart';
 import '../services/preferences_service.dart';
 import '../theme/app_theme.dart';
@@ -29,6 +32,10 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _tujuan = 'Surabaya';
   DateTime _tanggal = DateTime.now().add(const Duration(days: 1));
 
+  List<String> _cities = AppConstants.cities;
+  List<TravelRoute> _populer = DummyData.routes.where((r) => r.populer).toList();
+  List<Armada> _armada = DummyData.armada;
+
   @override
   void initState() {
     super.initState();
@@ -36,6 +43,41 @@ class _HomeScreenState extends State<HomeScreen> {
     PreferencesService.getKotaAsal().then((k) {
       if (k != null && mounted) setState(() => _asal = k);
     });
+    _loadDynamicCatalog();
+  }
+
+  Future<void> _loadDynamicCatalog() async {
+    if (!CatalogRepository.enabled) return;
+
+    // Muat kota, rute populer, dan armada secara paralel
+    try {
+      final citiesFuture = CatalogRepository.cities();
+      final routesFuture = CatalogRepository.searchRoutes(sort: 'popular', limit: 10);
+      final rentalsFuture = CatalogRepository.rentals(limit: 10);
+
+      final results = await Future.wait([
+        citiesFuture,
+        routesFuture,
+        rentalsFuture,
+      ]);
+
+      if (!mounted) return;
+      setState(() {
+        final cities = results[0] as List<String>;
+        if (cities.isNotEmpty) _cities = cities;
+
+        final routesPage = results[1] as CatalogPage<TravelRoute>;
+        if (routesPage.items.isNotEmpty) _populer = routesPage.items;
+
+        final armadaList = results[2] as List<Armada>;
+        if (armadaList.isNotEmpty) _armada = armadaList;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _handleRefresh() async {
+    CatalogRepository.clearCache();
+    await _loadDynamicCatalog();
   }
 
   Future<void> _pickDate() async {
@@ -88,601 +130,602 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final populer = DummyData.routes.where((r) => r.populer).toList();
-
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          // ---------- Header ----------
-          SliverToBoxAdapter(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [AppTheme.primary, AppTheme.primaryDark],
-                ),
-                borderRadius: BorderRadius.vertical(
-                  bottom: Radius.circular(28),
-                ),
-              ),
-              padding: EdgeInsets.fromLTRB(
-                Adaptive.hPad(context, maxWidth: 880, min: 20),
-                52,
-                Adaptive.hPad(context, maxWidth: 880, min: 20),
-                24,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(14),
-                        child: Image.asset(
-                          'assets/icon/app_logo.png',
-                          width: 46,
-                          height: 46,
-                          cacheWidth: 140,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'RARA TRAVEL & TOUR',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                            Text(
-                              'Amanah & Tepat Waktu',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: _bantuan,
-                        icon: const Icon(
-                          Icons.headset_mic_outlined,
-                          color: Colors.white,
-                        ),
-                        tooltip: 'Bantuan',
-                      ),
-                    ],
+      body: RefreshIndicator(
+        onRefresh: _handleRefresh,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            // ---------- Header ----------
+            SliverToBoxAdapter(
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [AppTheme.primary, AppTheme.primaryDark],
                   ),
-                  const SizedBox(height: 18),
-                  const Text(
-                    'Mau pergi ke mana\nhari ini?',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      height: 1.25,
-                    ),
+                  borderRadius: BorderRadius.vertical(
+                    bottom: Radius.circular(28),
                   ),
-                  const SizedBox(height: 14),
-                  // Kartu pencarian
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(18),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Colors.black26,
-                          blurRadius: 12,
-                          offset: Offset(0, 4),
+                ),
+                padding: EdgeInsets.fromLTRB(
+                  Adaptive.hPad(context, maxWidth: 880, min: 20),
+                  52,
+                  Adaptive.hPad(context, maxWidth: 880, min: 20),
+                  24,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(14),
+                          child: Image.asset(
+                            'assets/icon/app_logo.png',
+                            width: 46,
+                            height: 46,
+                            cacheWidth: 140,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'RARA TRAVEL & TOUR',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              Text(
+                                'Amanah & Tepat Waktu',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: _bantuan,
+                          icon: const Icon(
+                            Icons.headset_mic_outlined,
+                            color: Colors.white,
+                          ),
+                          tooltip: 'Bantuan',
                         ),
                       ],
                     ),
-                    child: Column(
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: DropdownButtonFormField<String>(
-                                // Key agar Tukar/prefill me-rebuild field
-                                // (initialValue hanya dibaca saat dibuat).
-                                key: ValueKey(_asal),
-                                initialValue: _asal,
-                                decoration: const InputDecoration(
-                                  labelText: 'Dari',
-                                  prefixIcon: Icon(Icons.my_location),
+                    const SizedBox(height: 18),
+                    const Text(
+                      'Mau pergi ke mana\nhari ini?',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        height: 1.25,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    // Kartu pencarian
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Colors.black26,
+                            blurRadius: 12,
+                            offset: Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: DropdownButtonFormField<String>(
+                                  // Key agar Tukar/prefill me-rebuild field
+                                  // (initialValue hanya dibaca saat dibuat).
+                                  key: ValueKey('asal_$_asal'),
+                                  initialValue: _cities.contains(_asal) ? _asal : null,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Dari',
+                                    prefixIcon: Icon(Icons.my_location),
+                                  ),
+                                  items: _cities
+                                      .map(
+                                        (c) => DropdownMenuItem(
+                                          value: c,
+                                          child: Text(c),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (v) => setState(() => _asal = v),
                                 ),
-                                items: AppConstants.cities
-                                    .map(
-                                      (c) => DropdownMenuItem(
-                                        value: c,
-                                        child: Text(c),
-                                      ),
-                                    )
-                                    .toList(),
-                                onChanged: (v) => setState(() => _asal = v),
                               ),
-                            ),
-                            IconButton(
-                              onPressed: _swap,
-                              icon: const Icon(
-                                Icons.swap_vert,
-                                color: AppTheme.primary,
-                              ),
-                              tooltip: 'Tukar',
-                            ),
-                            Expanded(
-                              child: DropdownButtonFormField<String>(
-                                key: ValueKey(_tujuan),
-                                initialValue: _tujuan,
-                                decoration: const InputDecoration(
-                                  labelText: 'Ke',
-                                  prefixIcon: Icon(Icons.location_on),
-                                ),
-                                items: AppConstants.cities
-                                    .map(
-                                      (c) => DropdownMenuItem(
-                                        value: c,
-                                        child: Text(c),
-                                      ),
-                                    )
-                                    .toList(),
-                                onChanged: (v) => setState(() => _tujuan = v),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        InkWell(
-                          onTap: _pickDate,
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 13,
-                            ),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.grey.shade600),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.calendar_month,
+                              IconButton(
+                                onPressed: _swap,
+                                icon: const Icon(
+                                  Icons.swap_vert,
                                   color: AppTheme.primary,
                                 ),
-                                const SizedBox(width: 10),
-                                Text(
-                                  Formatters.fullDate(_tanggal),
-                                  semanticsLabel:
-                                      'Tanggal keberangkatan: ${Formatters.fullDate(_tanggal)}',
-                                  style: const TextStyle(fontSize: 14),
+                                tooltip: 'Tukar',
+                              ),
+                              Expanded(
+                                child: DropdownButtonFormField<String>(
+                                  key: ValueKey('tujuan_$_tujuan'),
+                                  initialValue: _cities.contains(_tujuan) ? _tujuan : null,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Ke',
+                                    prefixIcon: Icon(Icons.location_on),
+                                  ),
+                                  items: _cities
+                                      .map(
+                                        (c) => DropdownMenuItem(
+                                          value: c,
+                                          child: Text(c),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (v) => setState(() => _tujuan = v),
                                 ),
-                                const Spacer(),
-                                const Icon(
-                                  Icons.edit_calendar_outlined,
-                                  size: 18,
-                                  color: Color(0xFF757575),
-                                ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton.icon(
-                            onPressed: _cari,
-                            icon: const Icon(Icons.search),
-                            label: const Text('Cari Travel'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: Adaptive.pagePadding(context, maxWidth: 880),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ---------- Strip kepercayaan (fakta layanan) ----------
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primary.withValues(alpha: 0.07),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        _TrustItem(
-                          icon: Icons.location_city_outlined,
-                          label: '${AppConstants.cities.length} Kota',
-                        ),
-                        const _TrustItem(
-                          icon: Icons.door_front_door_outlined,
-                          label: 'Door-to-door',
-                        ),
-                        const _TrustItem(
-                          icon: Icons.access_time,
-                          label: 'CS 24 Jam',
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  // ---------- Layanan ----------
-                  const SectionTitle(title: 'Layanan Kami'),
-                  const SizedBox(height: 12),
-                  GridView.count(
-                    crossAxisCount: Adaptive.isWide(context) ? 6 : 3,
-                    // Sel sedikit lebih tinggi → label 2 baris aman di font besar.
-                    childAspectRatio: 0.92,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    mainAxisSpacing: 14,
-                    children: [
-                      LayananTile(
-                        icon: Icons.directions_car_filled,
-                        label: 'Travel\nReguler',
-                        color: AppTheme.primary,
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const SearchScreen(),
-                          ),
-                        ),
-                      ),
-                      LayananTile(
-                        icon: Icons.key_outlined,
-                        label: 'Sewa\nMobil',
-                        color: Colors.blueGrey.shade700,
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const RentalScreen(),
-                          ),
-                        ),
-                      ),
-                      LayananTile(
-                        icon: Icons.landscape_outlined,
-                        label: 'Paket\nWisata',
-                        color: Colors.green.shade700,
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const WisataScreen(),
-                          ),
-                        ),
-                      ),
-                      LayananTile(
-                        icon: Icons.inventory_2_outlined,
-                        label: 'Kirim\nPaket',
-                        color: Colors.orange.shade800,
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const PaketScreen(),
-                          ),
-                        ),
-                      ),
-                      LayananTile(
-                        icon: Icons.confirmation_number_outlined,
-                        label: 'Pesanan\nSaya',
-                        color: Colors.purple.shade700,
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const OrdersScreen(),
-                          ),
-                        ),
-                      ),
-                      LayananTile(
-                        icon: Icons.chat_outlined,
-                        label: 'Chat\nAdmin',
-                        color: AppTheme.waGreen,
-                        onTap: _bantuan,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ---------- Rute populer ----------
-                  SectionTitle(
-                    title: 'Rute Populer',
-                    subtitle: 'Door-to-door, jemput di rumah',
-                    onSeeAll: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const SearchScreen()),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    height: 260,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: populer.length,
-                      separatorBuilder: (_, __) => const SizedBox(width: 10),
-                      itemBuilder: (_, i) => SizedBox(
-                        width: 320,
-                        child: RouteCard(
-                          route: populer[i],
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => RouteDetailScreen(
-                                route: populer[i],
-                                tanggal: _tanggal,
+                          const SizedBox(height: 10),
+                          InkWell(
+                            onTap: _pickDate,
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 13,
+                              ),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.grey.shade600),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.calendar_month,
+                                    color: AppTheme.primary,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Text(
+                                    Formatters.fullDate(_tanggal),
+                                    semanticsLabel:
+                                        'Tanggal keberangkatan: ${Formatters.fullDate(_tanggal)}',
+                                    style: const TextStyle(fontSize: 14),
+                                  ),
+                                  const Spacer(),
+                                  const Icon(
+                                    Icons.edit_calendar_outlined,
+                                    size: 18,
+                                    color: Color(0xFF757575),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ---------- Promo (ketuk → cari rute Jakarta) ----------
-                  InkWell(
-                    borderRadius: BorderRadius.circular(18),
-                    onTap: _promoTap,
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.orange.shade700,
-                            Colors.deepOrange.shade700,
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      child: Row(
-                        children: [
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'PROMO RUTE JAUH',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 1,
-                                  ),
-                                ),
-                                SizedBox(height: 4),
-                                Text(
-                                  'Surabaya/Malang ↔ Jakarta mulai Rp450rb + kode RARAHEMAT hemat 10%!',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 15,
-                                  ),
-                                ),
-                                SizedBox(height: 4),
-                                Text(
-                                  'Ketuk untuk lihat jadwal →',
-                                  style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: const Icon(
-                              Icons.local_offer,
-                              color: Colors.white,
-                              size: 30,
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: _cari,
+                              icon: const Icon(Icons.search),
+                              label: const Text('Cari Travel'),
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 20),
+                  ],
+                ),
+              ),
+            ),
 
-                  // ---------- Armada ----------
-                  SectionTitle(
-                    title: 'Armada Kami',
-                    subtitle: 'Bersih, terawat, full AC',
-                    onSeeAll: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const RentalScreen()),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: Adaptive.pagePadding(context, maxWidth: 880),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ---------- Strip kepercayaan (fakta layanan) ----------
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primary.withValues(alpha: 0.07),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          _TrustItem(
+                            icon: Icons.location_city_outlined,
+                            label: '${_cities.length} Kota',
+                          ),
+                          const _TrustItem(
+                            icon: Icons.door_front_door_outlined,
+                            label: 'Door-to-door',
+                          ),
+                          const _TrustItem(
+                            icon: Icons.access_time,
+                            label: 'CS 24 Jam',
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    height: 150,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: DummyData.armada.length,
-                      separatorBuilder: (_, __) => const SizedBox(width: 10),
-                      itemBuilder: (_, i) {
-                        final a = DummyData.armada[i];
-                        return Container(
-                          width: 210,
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: AppTheme.cardShadow,
-                                blurRadius: 8,
-                                offset: Offset(0, 2),
+                    const SizedBox(height: 18),
+                    // ---------- Layanan ----------
+                    const SectionTitle(title: 'Layanan Kami'),
+                    const SizedBox(height: 12),
+                    GridView.count(
+                      crossAxisCount: Adaptive.isWide(context) ? 6 : 3,
+                      childAspectRatio: 0.92,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      mainAxisSpacing: 14,
+                      children: [
+                        LayananTile(
+                          icon: Icons.directions_car_filled,
+                          label: 'Travel\nReguler',
+                          color: AppTheme.primary,
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const SearchScreen(),
+                            ),
+                          ),
+                        ),
+                        LayananTile(
+                          icon: Icons.key_outlined,
+                          label: 'Sewa\nMobil',
+                          color: Colors.blueGrey.shade700,
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const RentalScreen(),
+                            ),
+                          ),
+                        ),
+                        LayananTile(
+                          icon: Icons.landscape_outlined,
+                          label: 'Paket\nWisata',
+                          color: Colors.green.shade700,
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const WisataScreen(),
+                            ),
+                          ),
+                        ),
+                        LayananTile(
+                          icon: Icons.inventory_2_outlined,
+                          label: 'Kirim\nPaket',
+                          color: Colors.orange.shade800,
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const PaketScreen(),
+                            ),
+                          ),
+                        ),
+                        LayananTile(
+                          icon: Icons.confirmation_number_outlined,
+                          label: 'Pesanan\nSaya',
+                          color: Colors.purple.shade700,
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const OrdersScreen(),
+                            ),
+                          ),
+                        ),
+                        LayananTile(
+                          icon: Icons.chat_outlined,
+                          label: 'Chat\nAdmin',
+                          color: AppTheme.waGreen,
+                          onTap: _bantuan,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+
+                    // ---------- Rute populer ----------
+                    SectionTitle(
+                      title: 'Rute Populer',
+                      subtitle: 'Door-to-door, jemput di rumah',
+                      onSeeAll: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const SearchScreen()),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      height: 260,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _populer.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 10),
+                        itemBuilder: (_, i) => SizedBox(
+                          width: 320,
+                          child: RouteCard(
+                            route: _populer[i],
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => RouteDetailScreen(
+                                  route: _populer[i],
+                                  tanggal: _tanggal,
+                                ),
                               ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // ---------- Promo (ketuk → cari rute Jakarta) ----------
+                    InkWell(
+                      borderRadius: BorderRadius.circular(18),
+                      onTap: _promoTap,
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.orange.shade700,
+                              Colors.deepOrange.shade700,
                             ],
                           ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: Row(
+                          children: [
+                            const Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Icon(
-                                    Icons.directions_car,
-                                    color: AppTheme.primary,
+                                  Text(
+                                    'PROMO RUTE JAUH',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 1,
+                                    ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      a.nama,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
-                                      ),
+                                  SizedBox(height: 4),
+                                  Text(
+                                    'Surabaya/Malang ↔ Jakarta mulai Rp450rb + kode RARAHEMAT hemat 10%!',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                  SizedBox(height: 4),
+                                  Text(
+                                    'Ketuk untuk lihat jadwal →',
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 12,
                                     ),
                                   ),
                                 ],
                               ),
-                              Text(
-                                a.tipe,
-                                style: TextStyle(
-                                  color: Colors.grey.shade600,
-                                  fontSize: 12,
-                                ),
+                            ),
+                            const SizedBox(width: 10),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(14),
                               ),
-                              const Spacer(),
-                              Text(
-                                'Muat ${a.kapasitas} penumpang',
-                                style: const TextStyle(fontSize: 12),
+                              child: const Icon(
+                                Icons.local_offer,
+                                color: Colors.white,
+                                size: 30,
                               ),
-                              Text(
-                                'Sewa ${Formatters.idr(a.hargaSewa)}/hari',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.primary,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ---------- Kenapa kami ----------
-                  const SectionTitle(title: 'Kenapa Rara Travel?'),
-                  const SizedBox(height: 10),
-                  const Card(
-                    child: Padding(
-                      padding: EdgeInsets.all(14),
-                      child: Column(
-                        children: [
-                          _WhyRow(
-                            icon: Icons.verified_user_outlined,
-                            title: 'Aman & berasuransi',
-                            desc:
-                                'Perjalanan dilindungi asuransi + driver profesional.',
-                          ),
-                          Divider(height: 18),
-                          _WhyRow(
-                            icon: Icons.access_time,
-                            title: 'Tepat waktu',
-                            desc:
-                                'Jadwal disiplin setiap hari via jalur tol tercepat.',
-                          ),
-                          Divider(height: 18),
-                          _WhyRow(
-                            icon: Icons.door_front_door_outlined,
-                            title: 'Door-to-door',
-                            desc:
-                                'Dijemput di rumah, diantar sampai depan tujuan.',
-                          ),
-                        ],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 20),
+                    const SizedBox(height: 20),
 
-                  // ---------- Kontak ----------
-                  Card(
-                    color: AppTheme.primaryDark,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Butuh bantuan? Hubungi kami 24 jam',
-                            style: TextStyle(
+                    // ---------- Armada ----------
+                    SectionTitle(
+                      title: 'Armada Kami',
+                      subtitle: 'Bersih, terawat, full AC',
+                      onSeeAll: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const RentalScreen()),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      height: 150,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _armada.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 10),
+                        itemBuilder: (_, i) {
+                          final a = _armada[i];
+                          return Container(
+                            width: 210,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
                               color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 15,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          const Text(
-                            AppConstants.phoneDisplay,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: FilledButton.icon(
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: Colors.white,
-                                    foregroundColor: AppTheme.primaryDark,
-                                  ),
-                                  onPressed: _bantuan,
-                                  icon: const Icon(Icons.chat),
-                                  label: const Text('Chat WA'),
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: AppTheme.cardShadow,
+                                  blurRadius: 8,
+                                  offset: Offset(0, 2),
                                 ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: Colors.white,
-                                    side: const BorderSide(
-                                      color: Colors.white70,
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.directions_car,
+                                      color: AppTheme.primary,
                                     ),
-                                  ),
-                                  onPressed: () => ExternalService.openPhone(),
-                                  icon: const Icon(Icons.call),
-                                  label: const Text('Telepon'),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        a.nama,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                            ],
-                          ),
-                        ],
+                                Text(
+                                  a.tipe,
+                                  style: TextStyle(
+                                    color: Colors.grey.shade600,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                const Spacer(),
+                                Text(
+                                  'Muat ${a.kapasitas} penumpang',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                                Text(
+                                  'Sewa ${Formatters.idr(a.hargaSewa)}/hari',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.primary,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                ],
+                    const SizedBox(height: 20),
+
+                    // ---------- Kenapa kami ----------
+                    const SectionTitle(title: 'Kenapa Rara Travel?'),
+                    const SizedBox(height: 10),
+                    const Card(
+                      child: Padding(
+                        padding: EdgeInsets.all(14),
+                        child: Column(
+                          children: [
+                            _WhyRow(
+                              icon: Icons.verified_user_outlined,
+                              title: 'Aman & berasuransi',
+                              desc:
+                                  'Perjalanan dilindungi asuransi + driver profesional.',
+                            ),
+                            Divider(height: 18),
+                            _WhyRow(
+                              icon: Icons.access_time,
+                              title: 'Tepat waktu',
+                              desc:
+                                  'Jadwal disiplin setiap hari via jalur tol tercepat.',
+                            ),
+                            Divider(height: 18),
+                            _WhyRow(
+                              icon: Icons.door_front_door_outlined,
+                              title: 'Door-to-door',
+                              desc:
+                                  'Dijemput di rumah, diantar sampai depan tujuan.',
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // ---------- Kontak ----------
+                    Card(
+                      color: AppTheme.primaryDark,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Butuh bantuan? Hubungi kami 24 jam',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              AppConstants.phoneDisplay,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: FilledButton.icon(
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: Colors.white,
+                                      foregroundColor: AppTheme.primaryDark,
+                                    ),
+                                    onPressed: _bantuan,
+                                    icon: const Icon(Icons.chat),
+                                    label: const Text('Chat WA'),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.white,
+                                      side: const BorderSide(
+                                        color: Colors.white70,
+                                      ),
+                                    ),
+                                    onPressed: () => ExternalService.openPhone(),
+                                    icon: const Icon(Icons.call),
+                                    label: const Text('Telepon'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

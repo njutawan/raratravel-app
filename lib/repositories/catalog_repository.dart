@@ -120,7 +120,7 @@ class CatalogRepository {
           .toList();
     } catch (e) {
       debugPrint('Katalog: daftar kota gagal ($e)');
-      return const [];
+      return DummyData.routes.map((r) => r.asal).toSet().toList();
     }
   }
 
@@ -137,6 +137,7 @@ class CatalogRepository {
       }, cacheKey: 'rentals|$kota|$q|$limit');
 
       final daftar = (hasil['items'] as List?) ?? const [];
+      if (daftar.isEmpty) return DummyData.armada;
       return daftar
           .whereType<Map>()
           .map((item) => _armadaDariServer(Map<String, dynamic>.from(item)))
@@ -159,6 +160,7 @@ class CatalogRepository {
       }, cacheKey: 'tours|$q|$limit');
 
       final daftar = (hasil['items'] as List?) ?? const [];
+      if (daftar.isEmpty) return DummyData.wisata;
       return daftar
           .whereType<Map>()
           .map((item) => _wisataDariServer(Map<String, dynamic>.from(item)))
@@ -268,28 +270,101 @@ class CatalogRepository {
     );
   }
 
-  static Armada _armadaDariServer(Map<String, dynamic> json) => Armada(
-    id: (json['id'] ?? '').toString(),
-    nama: (json['name'] ?? '').toString(),
-    tipe: (json['vehicle_type'] ?? json['package_type'] ?? '').toString(),
-    kapasitas: (json['seat_capacity'] as num?)?.toInt() ?? 0,
-    hargaSewa: (json['price_from'] as num?)?.toInt() ?? 0,
-    hargaLepasKunci: 0,
-    fitur: const [],
-    deskripsi: (json['description'] ?? '').toString(),
-  );
+  static Armada _armadaDariServer(Map<String, dynamic> json) {
+    final rawDesc = (json['description'] ?? '').toString();
+    List<String> fitur = [];
+    if (json['features'] is List) {
+      fitur = (json['features'] as List).map((e) => e.toString()).toList();
+    } else if (json['fitur'] is List) {
+      fitur = (json['fitur'] as List).map((e) => e.toString()).toList();
+    } else if (rawDesc.contains('Fasilitas:')) {
+      final part = rawDesc.split('Fasilitas:').last;
+      fitur = part.split(',').map((s) => s.replaceAll('.', '').trim()).where((s) => s.isNotEmpty).toList();
+    }
 
-  static WisataPaket _wisataDariServer(Map<String, dynamic> json) => WisataPaket(
-    id: (json['id'] ?? '').toString(),
-    nama: (json['name'] ?? '').toString(),
-    lokasi: (json['destination'] ?? '').toString(),
-    harga: (json['price_from'] as num?)?.toInt() ?? 0,
-    durasi: _durasiHari((json['duration_days'] as num?)?.toInt()),
-    tipe: 'Open Trip',
-    include: const [],
-    highlight: const [],
-    deskripsi: (json['description'] ?? '').toString(),
-  );
+    final hargaSewa = (json['price_driver'] as num?)?.toInt() ??
+        (json['price_from'] as num?)?.toInt() ??
+        0;
+    final hargaLepasKunci = (json['price_self_drive'] as num?)?.toInt() ??
+        (json['price_lepas_kunci'] as num?)?.toInt() ??
+        0;
+
+    var cleanDesc = rawDesc;
+    if (cleanDesc.contains('Fasilitas:')) {
+      cleanDesc = cleanDesc.split('Fasilitas:').first.trim();
+    }
+
+    var nama = (json['name'] ?? json['vehicle_name'] ?? '').toString();
+    if (nama.contains(' + Sopir')) {
+      nama = nama.split(' + Sopir').first.trim();
+    }
+
+    return Armada(
+      id: (json['id'] ?? '').toString(),
+      nama: nama,
+      tipe: (json['vehicle_type'] ?? json['package_type'] ?? '').toString(),
+      kapasitas: (json['seat_capacity'] as num?)?.toInt() ?? 0,
+      hargaSewa: hargaSewa,
+      hargaLepasKunci: hargaLepasKunci,
+      fitur: fitur,
+      deskripsi: cleanDesc,
+    );
+  }
+
+  static WisataPaket _wisataDariServer(Map<String, dynamic> json) {
+    final rawDesc = (json['description'] ?? '').toString();
+    List<String> include = [];
+    List<String> highlight = [];
+
+    if (json['includes'] is List) {
+      include = (json['includes'] as List).map((e) => e.toString()).toList();
+    } else if (json['include'] is List) {
+      include = (json['include'] as List).map((e) => e.toString()).toList();
+    }
+
+    if (json['highlights'] is List) {
+      highlight = (json['highlights'] as List).map((e) => e.toString()).toList();
+    } else if (json['highlight'] is List) {
+      highlight = (json['highlight'] as List).map((e) => e.toString()).toList();
+    }
+
+    var cleanDesc = rawDesc;
+    if (include.isEmpty && cleanDesc.contains('Termasuk:')) {
+      final parts = cleanDesc.split('Termasuk:');
+      cleanDesc = parts[0].trim();
+      final rest = parts[1];
+      if (rest.contains('Highlight:')) {
+        final restParts = rest.split('Highlight:');
+        include = restParts[0].split(',').map((s) => s.replaceAll('.', '').trim()).where((s) => s.isNotEmpty).toList();
+        highlight = restParts[1].split(',').map((s) => s.replaceAll('.', '').trim()).where((s) => s.isNotEmpty).toList();
+      } else {
+        include = rest.split(',').map((s) => s.replaceAll('.', '').trim()).where((s) => s.isNotEmpty).toList();
+      }
+    } else if (highlight.isEmpty && cleanDesc.contains('Highlight:')) {
+      final parts = cleanDesc.split('Highlight:');
+      cleanDesc = parts[0].trim();
+      highlight = parts[1].split(',').map((s) => s.replaceAll('.', '').trim()).where((s) => s.isNotEmpty).toList();
+    }
+
+    final durationDays = (json['duration_days'] as num?)?.toInt();
+    final durasi = (json['duration_text'] ?? '').toString().isNotEmpty
+        ? (json['duration_text'] ?? '').toString()
+        : _durasiHari(durationDays);
+
+    final tipe = (json['package_type'] ?? json['type'] ?? 'Open Trip').toString();
+
+    return WisataPaket(
+      id: (json['id'] ?? '').toString(),
+      nama: (json['name'] ?? '').toString(),
+      lokasi: (json['destination'] ?? '').toString(),
+      harga: (json['price_from'] as num?)?.toInt() ?? 0,
+      durasi: durasi,
+      tipe: tipe,
+      include: include,
+      highlight: highlight,
+      deskripsi: cleanDesc,
+    );
+  }
 
   static String _durasi(int? menit) {
     if (menit == null || menit <= 0) return '± 4–6 jam';

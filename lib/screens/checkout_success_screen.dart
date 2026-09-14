@@ -4,6 +4,7 @@ import '../app.dart';
 import '../data/dummy_data.dart';
 import '../models/booking.dart';
 import '../models/travel_route.dart';
+import '../repositories/catalog_repository.dart';
 import '../services/whatsapp_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/formatters.dart';
@@ -27,32 +28,57 @@ class CheckoutSuccessScreen extends StatelessWidget {
   }
 
   /// Cari rute kebalikan di katalog & buka form booking-nya.
-  void _pesanPulangPergi(BuildContext context) {
-    final cocok = DummyData.routes.where(
-      (r) => r.asal == booking.tujuan && r.tujuan == booking.asal,
-    );
-    if (cocok.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Rute pulang belum tersedia — chat admin ya!'),
-        ),
+  Future<void> _pesanPulangPergi(BuildContext context) async {
+    TravelRoute? pulang;
+
+    if (CatalogRepository.enabled) {
+      try {
+        final res = await CatalogRepository.searchRoutes(
+          asal: booking.tujuan,
+          tujuan: booking.asal,
+          limit: 1,
+        );
+        if (res.items.isNotEmpty) {
+          pulang = res.items.first;
+        }
+      } catch (_) {}
+    }
+
+    if (pulang == null) {
+      final cocok = DummyData.routes.where(
+        (r) => r.asal == booking.tujuan && r.tujuan == booking.asal,
       );
+      if (cocok.isNotEmpty) {
+        pulang = cocok.first;
+      }
+    }
+
+    if (pulang == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Rute pulang belum tersedia — chat admin ya!'),
+          ),
+        );
+      }
       ExternalService.openWhatsApp(
         'Halo *Rara Travel & Tour*, saya butuh rute ${booking.tujuan} → ${booking.asal}.',
       );
       return;
     }
-    final TravelRoute pulang = cocok.first;
+
     final tgl = DateTime.tryParse(booking.tanggal) ?? DateTime.now();
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => BookingScreen(
-          route: pulang,
-          tanggal: tgl.add(const Duration(days: 1)),
-          jam: pulang.jadwal.first,
+    if (context.mounted) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => BookingScreen(
+            route: pulang!,
+            tanggal: tgl.add(const Duration(days: 1)),
+            jam: pulang.jadwal.first,
+          ),
         ),
-      ),
-    );
+      );
+    }
   }
 
   @override

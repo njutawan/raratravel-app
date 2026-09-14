@@ -100,6 +100,18 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
+-- Tabel setelan internal (alternatif aman tanpa perlu superuser alter database)
+-- ---------------------------------------------------------------------------
+create table if not exists public.app_settings (
+  key text primary key,
+  value text not null,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.app_settings enable row level security;
+revoke all on table public.app_settings from anon, authenticated;
+
+-- ---------------------------------------------------------------------------
 -- Trigger: antrekan notifikasi setiap status berubah.
 -- ---------------------------------------------------------------------------
 create or replace function public.enqueue_booking_notification()
@@ -149,11 +161,19 @@ begin
     return null;  -- sudah pernah diantrekan untuk perubahan yang sama
   end if;
 
+  -- Ambil URL & secret dari tabel app_settings (fallback ke current_setting jika ada)
+  select value into v_url from public.app_settings where key = 'notify_endpoint';
+  if v_url is null then
+    v_url := nullif(current_setting('app.settings.notify_endpoint', true), '');
+  end if;
+
+  select value into v_secret from public.app_settings where key = 'notify_secret';
+  if v_secret is null then
+    v_secret := nullif(current_setting('app.settings.notify_secret', true), '');
+  end if;
+
   -- Kirim segera bila pg_net + URL Edge Function tersedia.
   -- Bila tidak, job tetap 'queued' dan dikirim oleh cron/drain berikutnya.
-  v_url := nullif(current_setting('app.settings.notify_endpoint', true), '');
-  v_secret := nullif(current_setting('app.settings.notify_secret', true), '');
-
   if v_url is not null and to_regproc('net.http_post(text,jsonb,jsonb,jsonb,integer)') is not null then
     begin
       -- Status job TIDAK diubah di sini: Edge Function yang menandai
@@ -339,8 +359,8 @@ revoke all on function public.complete_notification_job(uuid, boolean, text, tex
 -- ---------------------------------------------------------------------------
 do $$
 declare
-  v_url text := nullif(current_setting('app.settings.notify_endpoint', true), '');
-  v_secret text := nullif(current_setting('app.settings.notify_secret', true), '');
+  v_url text;
+  v_secret text;
 begin
   if to_regproc('cron.schedule(text,text,text)') is null then
     raise notice 'pg_cron tidak aktif — pakai Scheduled Function di Dashboard untuk memanggil notify-booking-status (mode drain).';
@@ -351,11 +371,21 @@ begin
     return;
   end if;
 
+  select value into v_url from public.app_settings where key = 'notify_endpoint';
+  if v_url is null then
+    v_url := nullif(current_setting('app.settings.notify_endpoint', true), '');
+  end if;
+
+  select value into v_secret from public.app_settings where key = 'notify_secret';
+  if v_secret is null then
+    v_secret := nullif(current_setting('app.settings.notify_secret', true), '');
+  end if;
+
   perform cron.unschedule('rara-drain-notifications')
     where exists (select 1 from cron.job j where j.jobname = 'rara-drain-notifications');
 
   if v_url is null then
-    raise notice 'app.settings.notify_endpoint belum diisi — cron drain dilewati. Lihat MIGRASI_SUPABASE.md.';
+    raise notice 'app_settings.notify_endpoint belum diisi — cron drain dilewati. Lihat MIGRASI_SUPABASE.md.';
     return;
   end if;
 

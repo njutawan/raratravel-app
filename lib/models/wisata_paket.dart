@@ -16,9 +16,9 @@ class WisataPaket {
     required this.lokasi,
     required this.harga,
     required this.durasi,
-    required this.tipe,
-    required this.include,
-    required this.highlight,
-    required this.deskripsi,
+    this.tipe = 'Open Trip',
+    this.include = const [],
+    this.highlight = const [],
+    this.deskripsi = '',
   });
 }

@@ -260,10 +260,13 @@ token itu (kalau lupa, aplikasi akan menerima galat 401 dari gerbang Supabase).
 
 ```sql
 create extension if not exists pg_net;
-alter database postgres set app.settings.notify_endpoint =
-  'https://<project-ref>.supabase.co/functions/v1/notify-booking-status';
-alter database postgres set app.settings.notify_secret = '<NOTIFY_WEBHOOK_SECRET>';
-select pg_reload_conf();
+
+-- Simpan endpoint & rahasia webhook ke tabel app_settings
+insert into public.app_settings (key, value)
+values
+  ('notify_endpoint', 'https://<project-ref>.supabase.co/functions/v1/notify-booking-status'),
+  ('notify_secret', '<NOTIFY_WEBHOOK_SECRET>')
+on conflict (key) do update set value = excluded.value, updated_at = now();
 ```
 
 Mengaktifkan ekstensi juga bisa lewat **Database → Extensions** (`pg_net`;

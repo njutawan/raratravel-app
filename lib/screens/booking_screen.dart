@@ -94,17 +94,26 @@ class _BookingScreenState extends State<BookingScreen> {
 
   /// Isi otomatis nama & WA dari profil akun (bila sudah login).
   Future<void> _prefillProfil() async {
-    if (!FirebaseBootstrap.ready) return;
     final user = AuthService.currentUser;
     if (user == null) return;
     try {
-      final profil = await FirestoreService.getUser(user.uid);
-      if (!mounted || profil == null) return;
-      if (_nama.text.isEmpty && profil.name.isNotEmpty) {
-        _nama.text = profil.name;
-      }
-      if (_wa.text.isEmpty && profil.phoneLocal.isNotEmpty) {
-        _wa.text = profil.phoneLocal;
+      if (FirebaseBootstrap.ready && BackendConfig.writeFirestore) {
+        final profil = await FirestoreService.getUser(user.uid);
+        if (!mounted || profil == null) return;
+        if (_nama.text.isEmpty && profil.name.isNotEmpty) {
+          _nama.text = profil.name;
+        }
+        if (_wa.text.isEmpty && profil.phoneLocal.isNotEmpty) {
+          _wa.text = profil.phoneLocal;
+        }
+      } else {
+        if (_nama.text.isEmpty && (user.displayName ?? '').isNotEmpty) {
+          _nama.text = user.displayName!;
+        }
+        if (_wa.text.isEmpty && (user.phoneNumber ?? '').isNotEmpty) {
+          final p = user.phoneNumber!;
+          _wa.text = p.startsWith('+62') ? '0${p.substring(3)}' : p;
+        }
       }
     } catch (_) {}
   }
@@ -158,7 +167,7 @@ class _BookingScreenState extends State<BookingScreen> {
         } on ApiException catch (e) {
           if (!mounted) return;
           if (e.isPriceMismatch && percobaan == 0) {
-            final lanjut = await _tanyaHargaBerubah(e);
+            final lanjut = await _tanyaHargaBerubah(e, booking.totalHarga);
             if (lanjut != true) {
               setState(() => _loading = false);
               return;
@@ -217,7 +226,7 @@ class _BookingScreenState extends State<BookingScreen> {
 
   /// Harga berubah di server (mis. admin memperbarui tarif). Tawarkan hitung
   /// ulang supaya pengguna tidak membayar dengan angka lama.
-  Future<bool?> _tanyaHargaBerubah(ApiException e) {
+  Future<bool?> _tanyaHargaBerubah(ApiException e, int totalLama) {
     final totalBaru = e.expectedTotal;
     return showDialog<bool>(
       context: context,
@@ -231,7 +240,7 @@ class _BookingScreenState extends State<BookingScreen> {
               'Tarif rute ini baru saja diperbarui admin. Mohon periksa total terbaru:',
             ),
             const SizedBox(height: 12),
-            Text('Total sebelumnya: ${Formatters.idr(booking.totalHarga)}'),
+            Text('Total sebelumnya: ${Formatters.idr(totalLama)}'),
             Text(
               'Total terbaru: ${Formatters.idr(totalBaru)}',
               style: const TextStyle(
