@@ -15,7 +15,7 @@ lalu:
 Pemasangan (sekali):
 
   python3 -m venv /tmp/venv
-  /tmp/venv/bin/pip install pgserver
+  /tmp/venv/bin/pip install pgserver "psycopg[binary]"
 
 Pemakaian, dari akar repositori:
 
@@ -269,7 +269,7 @@ def jalankan(data_dir: str, migrasi_saja: bool, hanya_rpc: bool) -> int:
     except ImportError:  # pragma: no cover
         print(
             "Paket pgserver/psycopg belum terpasang. Jalankan:\n"
-            "  python3 -m venv /tmp/venv && /tmp/venv/bin/pip install pgserver"
+            "  python3 -m venv /tmp/venv && /tmp/venv/bin/pip install pgserver \"psycopg[binary]\""
         )
         return 1
 

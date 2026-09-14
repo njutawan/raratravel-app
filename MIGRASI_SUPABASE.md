@@ -38,19 +38,130 @@ hijau di PostgreSQL 16 untuk seluruh migrasi `0000`–`0009`.
 
 ---
 
-## 2. Menyiapkan proyek Supabase
+## 2. Menyiapkan proyek Supabase (langkah demi langkah)
 
-```bash
-# sekali saja
-supabase login
-supabase link --project-ref <project-ref>
-supabase db push          # menjalankan supabase/migrations/*.sql berurutan
+Sekitar 15 menit. Urutannya:
+
+```
+buat proyek → pasang CLI → isi .env.supabase → migrasi database
+→ secrets → deploy fungsi → setelan notifikasi → verifikasi
 ```
 
-Bila `supabase db push` tidak dipakai, jalankan berkas migrasi secara manual
-lewat SQL Editor **dengan urutan nama berkas** (`…_0000` → `…_0009`).
+### 2.1 Buat proyek Supabase
 
-Ekstensi yang dipakai (aktifkan di Dashboard → Database → Extensions):
+1. Buka <https://supabase.com/dashboard> → **New project**.
+2. Nama: `raratravel`. Region: **Southeast Asia (Singapore)** — terdekat dari
+   Indonesia, jadi paling responsif.
+3. **Database Password** → klik *Generate*, lalu **SIMPAN**. Password ini
+   dibutuhkan `supabase link` dan tidak bisa dilihat lagi (kalau hilang:
+   Dashboard → Settings → Database → *Reset database password*).
+4. Tunggu ±2 menit sampai penyiapan selesai.
+5. Catat **project ref** dari URL:
+   `https://supabase.com/dashboard/project/<project-ref>`.
+
+### 2.2 Pasang Supabase CLI di komputer
+
+```bash
+npm install -g supabase     # butuh Node 18+ (disarankan 20/22)
+supabase login              # membuka peramban, sekali saja
+supabase --version
+```
+
+Tidak punya Node/npm? Setiap perintah `supabase …` bisa diganti
+`npx supabase@latest …` (tanpa instalasi). Bila komputer benar-benar tidak
+bisa memasang CLI, ikuti §2.5 (lewat Dashboard).
+
+Di lingkungan CI/otomatis, gunakan token: buat di Dashboard → Account →
+Access Tokens, lalu `export SUPABASE_ACCESS_TOKEN=sbp_…`.
+
+### 2.3 Isi berkas setelan lokal
+
+```bash
+cp .env.supabase.example .env.supabase
+# isi minimal: SUPABASE_PROJECT_REF, SUPABASE_DB_PASSWORD, FIREBASE_PROJECT_ID
+```
+
+`.env.supabase` sudah masuk `.gitignore` — **jangan** di-commit.
+
+| Isian | Dari mana |
+|---|---|
+| `SUPABASE_PROJECT_REF` | URL Dashboard (lihat §2.1) |
+| `SUPABASE_DB_PASSWORD` | password saat membuat proyek |
+| `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Dashboard → Settings → API (boleh dikosongkan: skrip mencoba mengambil sendiri) |
+| `FIREBASE_PROJECT_ID` | Firebase Console → Project settings → General |
+| `FIREBASE_SERVICE_ACCOUNT_FILE` | Firebase Console → Project settings → **Service accounts** → *Generate new private key* → simpan **di luar** repositori |
+
+### 2.4 Jalankan skrip penyiapan
+
+```bash
+bash tools/setup_supabase.sh              # semua langkah (aman diulang)
+bash tools/setup_supabase.sh --check      # periksa saja, tidak mengubah apa pun
+bash tools/setup_supabase.sh --step 4 8   # hanya langkah tertentu
+```
+
+| Langkah | Isi | Setara perintah manual |
+|---|---|---|
+| 1 | periksa CLI + isi `.env.supabase` | — |
+| 2 | login ke Supabase | `supabase login` |
+| 3 | sambungkan proyek | `supabase link --project-ref <ref>` |
+| 4 | terapkan 11 migrasi | `supabase db push --linked` |
+| 5 | kirim secrets | `supabase secrets set …` (§3) |
+| 6 | deploy 10 Edge Function | `supabase functions deploy <nama>` (§4) |
+| 7 | `pg_net` + `app.settings.notify_*` | tempel SQL di SQL Editor (§4) |
+| 8 | verifikasi (REST, Storage, daftar fungsi) | — |
+
+Ingin manual sepenuhnya? Urutannya sama:
+
+```bash
+supabase link --project-ref <ref>
+supabase migration list              # melihat migrasi lokal ↔ remote
+supabase db push --dry-run           # melihat apa yang akan dijalankan
+supabase db push                     # menerapkan 202609120001 … 202609140009
+```
+
+### 2.5 Bila memakai Dashboard saja (tanpa CLI)
+
+1. **SQL Editor** → tempel isi `supabase/migrations/*.sql` **berurutan sesuai
+   nama berkas** (`202609120001_initial_catalog.sql` → `…_0009_admin.sql`),
+   satu berkas sekali jalan. Semua berkas idempoten (aman diulang).
+2. **Edge Functions** → buat 10 fungsi dengan nama sama seperti folder di
+   `supabase/functions/`, tempel isi `index.ts` (folder `_shared` ikut
+   diunggah). **Matikan “Verify JWT”** untuk semuanya.
+3. **Edge Functions → Manage secrets** → isi seperti §3.
+4. **Storage → New bucket** — hanya bila migrasi `0008` melaporkan
+   `PERINGATAN`: `public-assets` (public, 5 MB), `avatars` (public, 2 MB),
+   `payment-proofs` (privat, 5 MB); batasi tipe ke `image/jpeg, image/png,
+   image/webp` (+`application/pdf` untuk bukti transfer).
+5. **Storage → Policies** → buat `public_assets_read`: SELECT untuk role
+   `anon` + `authenticated`, ekspresi
+   `bucket_id in ('public-assets', 'avatars')`.
+6. **Database → Extensions** → aktifkan `pg_net`; `pg_cron` opsional.
+
+### 2.6 Titik periksa tiap tahap
+
+| Setelah langkah | Tanda berhasil |
+|---|---|
+| 4 (migrasi) | `supabase migration list` tidak menyisakan kolom remote kosong; tabel `bookings`, `payments`, `user_devices`, `media_assets` ada di Table Editor; `cities` berisi 17 baris |
+| 5 (secrets) | `supabase secrets list` memuat `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `FIREBASE_PROJECT_ID`, `NOTIFY_WEBHOOK_SECRET`, `FIREBASE_SERVICE_ACCOUNT` |
+| 6 (deploy) | `supabase functions list` menampilkan 10 fungsi berstatus `ACTIVE` |
+| 7 (setelan) | `select current_setting('app.settings.notify_endpoint', true);` tidak kosong |
+| 8 (verifikasi) | `catalog_cities` & `search_routes` menjawab 200; bucket `public-assets` & `payment-proofs` ada |
+
+### 2.7 Kendala yang sering muncul
+
+| Gejala | Sebab & jalan keluar |
+|---|---|
+| `supabase link` → *password authentication failed* | password database salah/terlalu lama → reset di Dashboard → Settings → Database |
+| `db push` → `ERROR: must be owner of table objects` | kebijakan pada `storage.objects`. Migrasi `0008` sudah menangkap galat ini dan hanya memberi `PERINGATAN`; sisa langkah tetap jalan. Buat bucket & kebijakan lewat Dashboard (§2.5 butir 4–5) |
+| `db push` → *found local migrations not present on remote* | riwayat berbeda. Lihat `supabase migration list`; bila migrasi itu **sudah** ada di remote, tandai dengan `supabase migration repair --status applied <versi>` |
+| Fungsi membalas `Konfigurasi SUPABASE_SERVICE_ROLE_KEY belum diisi` | secret belum di-set (langkah 5) — secrets berlaku langsung tanpa deploy ulang |
+| Fungsi membalas `unauthorized` untuk token aplikasi yang sah | `FIREBASE_PROJECT_ID` berbeda dengan proyek Firebase aplikasi |
+| Katalog balas `[]` atau kuota kosong | migrasi seed `0007` belum jalan, atau `CATALOG_SOURCE` masih `local` di aplikasi |
+| Unggah berkas → `Bucket not found` | bucket belum dibuat (langkah `0008` dilewati) → Dashboard → Storage (§2.5 butir 4) |
+| Notifikasi FCM tidak sampai | `pg_net`/`app.settings` belum diisi (langkah 7). Sementara: panggil `notify-booking-status` dengan body `{"drain": true}` dari Scheduled Function tiap 5 menit |
+| Aplikasi masih menampilkan data lama | build tanpa `--dart-define` (lihat §5) |
+
+**Ekstensi** yang dipakai:
 
 | Ekstensi | Wajib? | Kegunaan |
 |---|---|---|
@@ -97,6 +208,9 @@ supabase secrets set \
 Semua fungsi **tidak diverifikasi JWT oleh Supabase** (`verify_jwt = false`
 di `supabase/config.toml`) karena otentikasi memakai token Firebase yang
 diperiksa di dalam fungsi.
+
+Cara tercepat: `bash tools/setup_supabase.sh --step 6` (memeriksa satu per satu).
+Bila dikerjakan manual, untuk setiap nama fungsi di bawah jalankan:
 
 ```bash
 supabase functions deploy auth-user-sync
@@ -155,7 +269,8 @@ Urutan yang disarankan: `CATALOG_SOURCE=supabase` dulu (resiko kecil) →
 Tiga tingkat pemeriksaan, semuanya jalan di laptop:
 
 ```bash
-python3 -m venv /tmp/venv && /tmp/venv/bin/pip install pgserver   # sekali saja
+python3 -m venv /tmp/venv
+/tmp/venv/bin/pip install pgserver "psycopg[binary]"   # sekali saja
 /tmp/venv/bin/python tools/db_check.py   # migrasi + 17 kelompok uji database + kecocokan RPC
 node tools/ts_check.js                   # impor relatif + nama ekspor Edge Function
 node tools/e2e/run_e2e.mts               # Edge Function DIJALANKAN (17 skenario)
@@ -185,6 +300,15 @@ webhook Midtrans, status HTTP yang selalu 400 untuk galat database, dan
 rujukan alias SQL yang salah pada `record_media_asset`.
 
 ## 7. Uji cepat setelah deploy
+
+Pemeriksaan tanpa token (`catalog_cities`, `search_routes`, tolakan 401,
+bucket Storage) bisa dijalankan sekali jalan:
+
+```bash
+bash tools/setup_supabase.sh --step 8
+```
+
+Pemeriksaan dengan token Firebase (perlu login di aplikasi):
 
 ```bash
 REF=https://<ref>.supabase.co
@@ -318,6 +442,8 @@ Promo `RARAHEMAT`: potongan 10%, maksimal Rp50.000.
 |---|---|
 | `supabase/migrations/*.sql` | skema, RPC, trigger, seed, storage, admin |
 | `supabase/functions/README.md` | daftar Edge Function + contoh panggilan |
+| `tools/setup_supabase.sh` | penyiapan proyek: migrasi, secrets, deploy, verifikasi |
+| `.env.supabase.example` | contoh setelan lokal (salin jadi `.env.supabase`) |
 | `tools/db_smoke_test.sql` | 17 kelompok uji database (jalankan lokal) |
 | `tools/generate_catalog_seed.py` | membuat ulang seed katalog dari `dummy_data.dart` |
 | `lib/config/backend_config.dart` | sakelar migrasi di sisi aplikasi |

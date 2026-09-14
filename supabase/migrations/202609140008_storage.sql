@@ -15,44 +15,77 @@
 -- ---------------------------------------------------------------------------
 -- Bucket
 -- ---------------------------------------------------------------------------
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values (
-  'public-assets', 'public-assets', true, 5242880,
-  array['image/jpeg', 'image/png', 'image/webp']
-)
-on conflict (id) do update
-  set public = excluded.public,
-      file_size_limit = excluded.file_size_limit,
-      allowed_mime_types = excluded.allowed_mime_types;
+-- Catatan: peran yang dipakai `supabase db push`/`psql` TIDAK memiliki
+-- `storage.buckets` sendiri (pemiliknya peran internal `supabase_storage_admin`).
+-- Supabase masih mengizinkan INSERT/UPDATE lewat SQL Editor, tetapi bila suatu
+-- saat ditolak, migrasi ini TIDAK boleh menggagalkan seluruh `db push` —
+-- karena itu dibungkus blok yang menangkap `insufficient_privilege` dan
+-- menyarankan pembuatan bucket lewat Dashboard → Storage.
+do $$
+begin
+  insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+  values (
+    'public-assets', 'public-assets', true, 5242880,
+    array['image/jpeg', 'image/png', 'image/webp']
+  )
+  on conflict (id) do update
+    set public = excluded.public,
+        file_size_limit = excluded.file_size_limit,
+        allowed_mime_types = excluded.allowed_mime_types;
 
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values (
-  'avatars', 'avatars', true, 2097152,
-  array['image/jpeg', 'image/png', 'image/webp']
-)
-on conflict (id) do update
-  set public = excluded.public,
-      file_size_limit = excluded.file_size_limit,
-      allowed_mime_types = excluded.allowed_mime_types;
+  insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+  values (
+    'avatars', 'avatars', true, 2097152,
+    array['image/jpeg', 'image/png', 'image/webp']
+  )
+  on conflict (id) do update
+    set public = excluded.public,
+        file_size_limit = excluded.file_size_limit,
+        allowed_mime_types = excluded.allowed_mime_types;
 
--- Bukti transfer/pembayaran: privat, hanya lewat signed URL.
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values (
-  'payment-proofs', 'payment-proofs', false, 5242880,
-  array['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
-)
-on conflict (id) do update
-  set public = excluded.public,
-      file_size_limit = excluded.file_size_limit,
-      allowed_mime_types = excluded.allowed_mime_types;
+  -- Bukti transfer/pembayaran: privat, hanya lewat signed URL.
+  insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+  values (
+    'payment-proofs', 'payment-proofs', false, 5242880,
+    array['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
+  )
+  on conflict (id) do update
+    set public = excluded.public,
+        file_size_limit = excluded.file_size_limit,
+        allowed_mime_types = excluded.allowed_mime_types;
+
+  raise notice '[0008] bucket Storage siap: public-assets, avatars, payment-proofs';
+exception
+  when insufficient_privilege then
+    raise notice '[0008] PERHATIAN: peran migrasi tidak boleh menulis ke storage.buckets.';
+    raise notice '[0008] Buat 3 bucket lewat Dashboard → Storage → New bucket:';
+    raise notice '[0008]   public-assets (public, 5 MB, jpg/png/webp)';
+    raise notice '[0008]   avatars       (public, 2 MB, jpg/png/webp)';
+    raise notice '[0008]   payment-proofs (privat, 5 MB, jpg/png/webp/pdf)';
+end;
+$$;
 
 -- ---------------------------------------------------------------------------
 -- Kebijakan akses objek
 -- ---------------------------------------------------------------------------
-drop policy if exists public_assets_read on storage.objects;
-create policy public_assets_read on storage.objects
-  for select to anon, authenticated
-  using (bucket_id in ('public-assets', 'avatars'));
+do $$
+begin
+  drop policy if exists public_assets_read on storage.objects;
+  create policy public_assets_read on storage.objects
+    for select to anon, authenticated
+    using (bucket_id in ('public-assets', 'avatars'));
+  raise notice '[0008] kebijakan baca berkas publik siap (public_assets_read).';
+exception
+  when insufficient_privilege then
+    raise notice '[0008] PERHATIAN: peran migrasi tidak boleh mengubah kebijakan storage.objects.';
+    raise notice '[0008] Buat sekali lewat Dashboard → Storage → Policies (bucket public-assets & avatars):';
+    raise notice '[0008]   nama  : public_assets_read';
+    raise notice '[0008]   izin  : SELECT, target role anon + authenticated';
+    raise notice '[0008]   ekspresi: bucket_id in (''public-assets'', ''avatars'')';
+  when duplicate_object then
+    raise notice '[0008] kebijakan public_assets_read sudah ada.';
+end;
+$$;
 
 -- payment-proofs sengaja TIDAK punya policy baca: satu-satunya jalan adalah
 -- Edge Function (service_role) yang memeriksa pemilik pesanan.

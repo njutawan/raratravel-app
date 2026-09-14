@@ -22,6 +22,12 @@ android/key.properties
 # Python tools
 __pycache__/
 
+# RAHASIA — setelan Supabase lokal (tools/setup_supabase.sh)
+.env.supabase
+supabase/.temp/
+service-account*.json
+firebase-service-account*.json
+
 # OS
 .DS_Store
 Thumbs.db

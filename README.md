@@ -67,8 +67,19 @@ raratravel_app/
 ### Konfigurasi Supabase (opsional selama migrasi)
 
 Firebase Auth dan FCM **tetap** digunakan; Supabase menggantikan Firestore
-sebagai tempat data (katalog, pesanan, perangkat, pembayaran). Jangan commit
-key ke repository — berikan konfigurasi saat build:
+sebagai tempat data (katalog, pesanan, perangkat, pembayaran).
+
+Menyiapkan proyek Supabase (migrasi database, secrets, deploy 10 Edge Function,
+verifikasi) — sekali jalan dan aman diulang:
+
+```bash
+cp .env.supabase.example .env.supabase   # isi project ref, password DB, project Firebase
+bash tools/setup_supabase.sh             # ada juga --check dan --step <n>
+```
+
+Panduan manualnya (termasuk cara lewat Dashboard tanpa CLI) ada di
+`MIGRASI_SUPABASE.md` §2. Jangan commit key ke repository — konfigurasi
+aplikasi diberikan saat build:
 
 ```powershell
 flutter pub get
@@ -93,7 +104,9 @@ Berkas terkait:
 
 | Berkas | Isi |
 |---|---|
-| `MIGRASI_SUPABASE.md` | panduan lengkap: deploy, secrets, uji, impor data, rollback |
+| `MIGRASI_SUPABASE.md` | panduan lengkap: penyiapan, deploy, secrets, uji, impor data, rollback |
+| `tools/setup_supabase.sh` | skrip penyiapan proyek (8 langkah, `--check`, `--step`) |
+| `.env.supabase.example` | contoh setelan lokal (salin jadi `.env.supabase`, jangan di-commit) |
 | `supabase/migrations/*.sql` | 11 berkas migrasi (skema, RPC, trigger, seed, storage, admin) |
 | `supabase/functions/` | 10 Edge Function (auth sync, katalog, booking, bayar, notifikasi, admin) |
 | `lib/config/backend_config.dart` | sakelar migrasi di sisi aplikasi |
@@ -102,7 +115,8 @@ Berkas terkait:
 Uji backend tanpa Docker/Supabase CLI (butuh Python 3 + `pgserver`):
 
 ```bash
-python3 -m venv /tmp/venv && /tmp/venv/bin/pip install pgserver   # sekali saja
+python3 -m venv /tmp/venv
+/tmp/venv/bin/pip install pgserver "psycopg[binary]"   # sekali saja
 /tmp/venv/bin/python tools/db_check.py      # migrasi + 17 kelompok uji + kecocokan RPC
 node tools/ts_check.js                      # impor & nama ekspor Edge Function
 node tools/e2e/run_e2e.mts                  # Edge Function benar-benar dijalankan
