@@ -1,0 +1,69 @@
+# ============================================================================
+# Konfigurasi Supabase CLI untuk Rara Travel & Tour.
+#
+# PENTING: `verify_jwt = false` untuk semua fungsi di bawah ini.
+#   Login aplikasi memakai Firebase, jadi token yang dikirim bukan JWT Supabase.
+#   Verifikasi dilakukan DI DALAM fungsi (`_shared/firebase.ts`) memakai
+#   sertifikat publik Google, bukan di gerbang Supabase.
+#
+# Deploy:
+#   supabase link --project-ref <ref>
+#   supabase db push                          # terapkan migrasi
+#   supabase functions deploy                 # deploy semua fungsi
+# ============================================================================
+
+project_id = "raratravel"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 16
+
+[studio]
+enabled = true
+port = 54323
+
+[auth]
+# Tidak dipakai: identitas tetap dari Firebase Auth.
+enabled = false
+
+[storage]
+enabled = true
+# Batas unggahan per berkas (5 MB) — sama dengan setelan bucket di migrasi.
+file_size_limit = "5MiB"
+
+[functions.auth-user-sync]
+verify_jwt = false
+
+[functions.search-routes]
+verify_jwt = false
+
+[functions.create-booking]
+verify_jwt = false
+
+[functions.manage-booking]
+verify_jwt = false
+
+[functions.register-device]
+verify_jwt = false
+
+[functions.notify-booking-status]
+verify_jwt = false
+
+[functions.payment-intent]
+verify_jwt = false
+
+[functions.payment-webhook]
+verify_jwt = false
+
+[functions.storage-sign]
+verify_jwt = false
+
+[functions.admin-import]
+verify_jwt = false

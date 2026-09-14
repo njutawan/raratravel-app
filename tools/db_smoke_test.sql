@@ -1,18 +1,36 @@
 -- ============================================================================
 -- tools/db_smoke_test.sql
--- Uji perilaku inti backend booking di PostgreSQL (tanpa Supabase).
+-- Uji perilaku backend booking di PostgreSQL sungguhan (tanpa Supabase).
 --
--- Cara pakai (butuh Python + pgserver, lihat tools/db_check.py):
---   python tools/db_check.py --run-tests
+-- Cara pakai (dari akar repositori):
+--   python3 -m venv /tmp/venv && /tmp/venv/bin/pip install pgserver   # sekali
+--   /tmp/venv/bin/python tools/db_check.py
 --
--- Isi uji:
---   1. create_booking bahagia      → harga dihitung server, kursi berkurang
---   2. validasi harga klien        → RA002 price_mismatch
---   3. kursi tidak cukup           → RA003 seats_unavailable
---   4. idempotency key             → tidak dobel, mengembalikan booking sama
---   5. promo                       → potongan + plafon benar
---   6. pembatalan                  → kursi kembali, status cancelled
---   7. kursi dobel (nomor sama)    → RA003
+-- Berkas ini dijalankan SETELAH seluruh migrasi oleh tools/db_check.py.
+-- Setiap kegagalan berhenti dengan pesan 'FAIL <nomor>: <sebab>' sehingga
+-- mudah dilacak. Semua data uji memakai kota "Kota Uji ..." agar tidak
+-- bertabrakan dengan data seed (kota asli).
+--
+-- Kelompok uji:
+--    1. create_booking bahagia        → harga & kursi dihitung server
+--    2. harga kiriman aplikasi keliru → RA002 price_mismatch
+--    3. kursi tidak mencukupi         → RA003 seats_unavailable
+--    4. idempotency key               → pesanan sama, tidak dobel
+--    5. promo RARAHEMAT               → potongan + plafon benar
+--    6. pembatalan                    → kursi kembali, status cancelled
+--    7. nomor kursi dobel             → ditolak, transaksi utuh
+--    8. riwayat + daftar pesanan      → pagination & filter status
+--    9. search_routes                 → pagination, filter kursi, urutan,
+--                                       kota tak dikenal, jadwal virtual
+--   10. detail rute + daftar kota
+--   11. user_devices                  → pindah pemilik, nonaktifkan
+--   12. pembayaran                    → webhook idempoten, lunas → confirmed
+--   13. notifikasi                    → antrean, dedupe, klaim, retry, token basi
+--   14. admin                         → peran, ubah status, stats, impor katalog
+--   15. impor riwayat Firestore       → idempoten + pemetaan status lama
+--   16. RPC pendukung Edge Function   → resolve_user_id, booking_rate_ok,
+--                                       prepare_notification_job
+--   17. tagihan oleh staf             → admin_create_payment + verifikasi manual
 -- ============================================================================
 
 insert into public.cities (id, name, slug, is_active) values
@@ -1003,4 +1021,132 @@ begin
       raise exception 'FAIL 15k2: pesan penolakan salah (%)', sqlerrm;
     end if;
   end;
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- 16. RPC pendukung Edge Function: pemetaan user, rem laju, kirim 1 job
+-- ---------------------------------------------------------------------------
+do $$
+declare
+  v_hasil jsonb;
+  v_user_id uuid;
+  v_job_id uuid;
+begin
+  -- 16a. Firebase UID → users.id
+  v_user_id := public.resolve_user_id('firebase-uid-uji');
+  if v_user_id <> '44444444-4444-4444-4444-444444444444' then
+    raise exception 'FAIL 16a: pemetaan firebase uid salah (%)', v_user_id;
+  end if;
+  if public.resolve_user_id('uid-tidak-ada') is not null then
+    raise exception 'FAIL 16a2: uid tak dikenal harus null';
+  end if;
+
+  -- 16b. Rem laju pembuatan pesanan
+  v_hasil := public.booking_rate_ok('44444444-4444-4444-4444-444444444444', 3, 60);
+  if (v_hasil->>'allowed')::boolean is not false then
+    raise exception 'FAIL 16b: pengguna dengan banyak pesanan harus kena rem (%)', v_hasil;
+  end if;
+  v_hasil := public.booking_rate_ok('55555555-5555-5555-5555-555555555555', 100, 60);
+  if (v_hasil->>'allowed')::boolean is not true then
+    raise exception 'FAIL 16b2: di bawah batas harus diizinkan (%)', v_hasil;
+  end if;
+
+  -- 16c. Kirim satu job langsung (dipanggil trigger setelah HTTP request)
+  select j.id into v_job_id
+    from public.notification_jobs j
+   where j.status in ('queued', 'failed') and j.attempts < j.max_attempts
+   order by j.created_at
+   limit 1;
+
+  v_hasil := public.prepare_notification_job(v_job_id);
+  if v_hasil is null or (v_hasil->>'job_id')::uuid <> v_job_id then
+    raise exception 'FAIL 16c: job harus bisa disiapkan (%)', v_hasil;
+  end if;
+  if (v_hasil->>'attempts')::integer <> 1 then
+    raise exception 'FAIL 16c2: percobaan harus bertambah jadi 1, dapat %', v_hasil->>'attempts';
+  end if;
+
+  -- Job yang sama dipanggil dua kali (mis. trigger ganda) → tidak dobel
+  if public.prepare_notification_job(v_job_id) is not null then
+    raise exception 'FAIL 16c3: job yang sudah dikirim tidak boleh disiapkan ulang';
+  end if;
+
+  v_hasil := public.complete_notification_job(v_job_id, true, null, 'fcm-msg-uji', null);
+  if (v_hasil->>'status') <> 'sent' then
+    raise exception 'FAIL 16d: job harus berstatus sent, dapat %', v_hasil->>'status';
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- 17. Staf membuat tagihan untuk pesanan pelanggan + verifikasi transfer manual
+-- ---------------------------------------------------------------------------
+do $$
+declare
+  v_hasil jsonb;
+  v_kode text;
+  v_booking jsonb;
+begin
+  -- Pesanan milik Siti (pelanggan lain) — staf harus bisa menagih
+  v_booking := public.create_booking(
+    '55555555-5555-5555-5555-555555555555',
+    jsonb_build_object(
+      'route_id', '33333333-3333-3333-3333-333333333333',
+      'travel_date', to_char(current_date + 16, 'YYYY-MM-DD'),
+      'departure_time', '06:00', 'seats', 2,
+      'contact_name', 'Siti Uji', 'contact_phone', '08120000002',
+      'idempotency_key', 'uji-staf-1'
+    )
+  );
+  v_kode := v_booking->'booking'->>'kode';
+
+  -- 17a. Pelanggan biasa tidak boleh memakai jalur staf
+  begin
+    perform public.admin_create_payment(
+      '55555555-5555-5555-5555-555555555555', v_kode, 'manual', 'Transfer Bank', 100000, null, null, null, '{}'::jsonb
+    );
+    raise exception 'FAIL 17a: pelanggan seharusnya ditolak';
+  exception when others then
+    if sqlerrm not like '%tidak punya akses admin%' then
+      raise exception 'FAIL 17a2: pesan penolakan salah (%)', sqlerrm;
+    end if;
+  end;
+
+  -- 17b. Staf membuat tagihan DP untuk pesanan pelanggan
+  v_hasil := public.admin_create_payment(
+    '88888888-8888-8888-8888-888888888888',
+    v_kode, 'manual', 'Transfer Bank', 400000, null, null, null,
+    jsonb_build_object('channel', 'kasir')
+  );
+  if (v_hasil->'payment'->>'amount')::numeric <> 400000 then
+    raise exception 'FAIL 17b: nominal tagihan staf salah (%)', v_hasil->'payment'->>'amount';
+  end if;
+  if (v_hasil->'payment'->>'provider_reference') is null then
+    raise exception 'FAIL 17b2: referensi manual harus dibuat otomatis';
+  end if;
+
+  -- 17c. Transfer manual diverifikasi → pembayaran tercatat idempoten
+  v_hasil := public.apply_payment_event(
+    'manual', 'evt-staf-1', 'manual.transfer_received', 'paid',
+    v_hasil->'payment'->>'provider_reference', 400000, '{}'::jsonb, true
+  );
+  if (v_hasil->'booking'->>'payment_status') <> 'partial' then
+    raise exception 'FAIL 17c: DP harus partial, dapat %', v_hasil->'booking'->>'payment_status';
+  end if;
+
+  -- kirim ulang event yang sama → tidak dobel
+  v_hasil := public.apply_payment_event(
+    'manual', 'evt-staf-1', 'manual.transfer_received', 'paid',
+    v_hasil->'payment'->>'provider_reference', 400000, '{}'::jsonb, true
+  );
+  if (v_hasil->>'duplicate')::boolean is not true then
+    raise exception 'FAIL 17c2: event ulang harus duplicate';
+  end if;
+
+  -- 17d. staff_role memetakan peran
+  if public.staff_role('88888888-8888-8888-8888-888888888888') <> 'operator' then
+    raise exception 'FAIL 17d: peran staf harus terbaca';
+  end if;
+  if public.staff_role('55555555-5555-5555-5555-555555555555') is not null then
+    raise exception 'FAIL 17d2: pelanggan harus null';
+  end if;
 end $$;

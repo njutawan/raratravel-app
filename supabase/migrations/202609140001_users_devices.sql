@@ -268,3 +268,22 @@ revoke all on function public.auth_user_sync(text, text, text, text, text, text,
 revoke all on function public.register_user_device(uuid, text, text, text, text, text) from public;
 revoke all on function public.unregister_user_device(uuid, text) from public;
 revoke all on function public.get_user_by_firebase_uid(text) from public;
+
+-- ---------------------------------------------------------------------------
+-- RPC: resolve_user_id — petakan Firebase UID → users.id
+-- Dipakai Edge Function supaya semua RPC lain cukup memakai UUID internal.
+-- ---------------------------------------------------------------------------
+create or replace function public.resolve_user_id(p_firebase_uid text)
+returns uuid
+language sql
+security definer
+stable
+set search_path = public, pg_temp
+as $$
+  select u.id
+    from public.users u
+   where u.firebase_uid = nullif(trim(coalesce(p_firebase_uid, '')), '')
+     and u.deleted_at is null;
+$$;
+
+revoke all on function public.resolve_user_id(text) from public;

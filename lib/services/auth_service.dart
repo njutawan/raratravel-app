@@ -2,9 +2,12 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import '../config/backend_config.dart';
 import '../models/app_user.dart';
 import '../models/booking.dart';
+import '../repositories/booking_repository.dart';
 import 'booking_storage.dart';
+import 'edge_client.dart';
 import 'firebase_bootstrap.dart';
 import 'firestore_service.dart';
 import 'messaging_service.dart';
@@ -86,6 +89,7 @@ class AuthService {
   );
 
   static Future<void> signOut() async {
+    EdgeClient.resetToken(); // token lama tidak boleh dipakai akun berikutnya
     // Bersihkan juga sesi Google (penting di HP yang dipakai bersama).
     try {
       await GoogleSignIn().signOut();
@@ -100,6 +104,8 @@ class AuthService {
     final user = _auth.currentUser;
     if (user == null) return;
     await FirestoreService.deleteAllUserData(user.uid);
+    // Catatan: penghapusan akun di PostgreSQL dilakukan lewat Edge Function
+    // admin (lihat MIGRASI_SUPABASE.md) agar kursi & tagihan ikut ditutup rapi.
     await user.delete();
     try {
       await GoogleSignIn().signOut();
@@ -123,7 +129,21 @@ class AuthService {
 
   /// Pascaproses login: profil + migrasi riwayat lokal + FCM.
   /// Aman gagal sebagian (try/catch di dalam).
+  ///
+  /// Sejak migrasi Supabase, fungsi ini juga:
+  ///   * membuat/memperbarui baris `public.users` (Firebase UID → UUID internal),
+  ///   * mengirim ulang pesanan lokal yang belum tersinkron,
+  ///   * menyimpan token FCM ke `public.user_devices`.
   static Future<void> completeSignIn(User user) async {
+    // Supabase: satu panggilan untuk profil + perangkat (langkah 4 & 8).
+    await _sinkronSupabase();
+
+    if (!BackendConfig.writeFirestore && !BackendConfig.firestoreIsSourceOfTruth) {
+      // Firestore sudah tidak dipakai; cukup sinkronkan ke server baru.
+      await _sinkronPesananSupabase();
+      return;
+    }
+
     try {
       final existing = await FirestoreService.getUser(user.uid);
       await FirestoreService.saveUser(
@@ -140,6 +160,38 @@ class AuthService {
         _sinkronPesanan(user.uid),
         MessagingService.registerToken(user.uid),
       ]);
+    } catch (_) {}
+  }
+
+  /// Daftarkan profil ke Supabase (idempoten; aman dipanggil berkali-kali).
+  static Future<void> _sinkronSupabase() async {
+    if (!BackendConfig.useSupabaseBooking && !BackendConfig.useSupabaseCatalog) {
+      return;
+    }
+    try {
+      await MessagingService.sinkronSupabase();
+    } catch (_) {}
+  }
+
+  /// Kirim pesanan lokal yang belum ada di server baru.
+  ///
+  /// Pesanan yang sudah pernah tersinkron ditandai di riwayat HP
+  /// (`rara_migrated_v1`), jadi proses ini hanya mengirim yang baru/tertinggal.
+  static Future<void> _sinkronPesananSupabase() async {
+    try {
+      final sudah = await BookingStorage.migratedCodes();
+      final lokal = await BookingStorage.loadAll();
+      for (final booking in lokal) {
+        if (sudah.contains(booking.kode)) continue;
+        try {
+          await BookingRepository.create(
+            draft: booking,
+            idempotencyKey: 'migrasi-${booking.kode}',
+          );
+        } catch (_) {
+          await BookingStorage.markDirty(booking.kode);
+        }
+      }
     } catch (_) {}
   }
 

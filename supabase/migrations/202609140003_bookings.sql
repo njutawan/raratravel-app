@@ -876,3 +876,44 @@ revoke all on function public.cancel_booking(uuid, text, text) from public;
 revoke all on function public.list_my_bookings(uuid, integer, integer, text) from public;
 revoke all on function public.find_booking(uuid, text) from public;
 revoke all on function public.resolve_promo(text, numeric) from public;
+
+-- ---------------------------------------------------------------------------
+-- RPC: booking_rate_ok — rem darurat anti-spam pembuatan pesanan.
+-- Idempotency key sudah menahan dobel-klik; ini menahan penyalahgunaan
+-- (mis. script yang membuat ratusan pesanan dalam semenit).
+-- ---------------------------------------------------------------------------
+create or replace function public.booking_rate_ok(
+  p_user_id uuid,
+  p_max integer default 8,
+  p_window_minutes integer default 60
+)
+returns jsonb
+language plpgsql
+security definer
+stable
+set search_path = public, pg_temp
+as $$
+declare
+  v_max integer := least(greatest(coalesce(p_max, 8), 1), 100);
+  v_window integer := least(greatest(coalesce(p_window_minutes, 60), 1), 1440);
+  v_count integer;
+begin
+  if p_user_id is null then
+    perform public.raise_app_error('validation_error', 'Pengguna tidak dikenali');
+  end if;
+
+  select count(*)::integer into v_count
+    from public.bookings b
+   where b.user_id = p_user_id
+     and b.created_at >= now() - make_interval(mins => v_window);
+
+  return jsonb_build_object(
+    'allowed', v_count < v_max,
+    'count', v_count,
+    'max', v_max,
+    'window_minutes', v_window
+  );
+end;
+$$;
+
+revoke all on function public.booking_rate_ok(uuid, integer, integer) from public;

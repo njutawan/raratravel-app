@@ -114,7 +114,6 @@ declare
   v_dedupe text;
   v_url text;
   v_secret text;
-  v_request_id bigint;
 begin
   if coalesce(new.user_id, null) is null then
     return null;
@@ -157,7 +156,11 @@ begin
 
   if v_url is not null and to_regproc('net.http_post(text,jsonb,jsonb,jsonb,integer)') is not null then
     begin
-      v_request_id := net.http_post(
+      -- Status job TIDAK diubah di sini: Edge Function yang menandai
+      -- 'dispatched' saat benar-benar mengambil job. Kalau panggilan ini
+      -- gagal (Edge Function mati/jaringan), job tetap 'queued' dan akan
+      -- dikirim oleh cron drain — notifikasi tidak hilang.
+      perform net.http_post(
         url := v_url,
         body := jsonb_build_object('job_id', v_job_id),
         headers := jsonb_build_object(
@@ -166,12 +169,7 @@ begin
         ),
         timeout_milliseconds := 5000
       );
-      update public.notification_jobs j
-         set status = 'dispatched',
-             provider_message_id = v_request_id::text
-       where j.id = v_job_id;
     exception when others then
-      -- Jaringan/HTTP gagal: biarkan 'queued' supaya cron mencoba lagi.
       update public.notification_jobs j
          set last_error = left(sqlerrm, 500)
        where j.id = v_job_id;
@@ -357,7 +355,7 @@ begin
     where exists (select 1 from cron.job j where j.jobname = 'rara-drain-notifications');
 
   if v_url is null then
-    raise notice 'app.settings.notify_endpoint belum diisi — cron drain dilewati. Lihat PANDUAN_SUPABASE.md.';
+    raise notice 'app.settings.notify_endpoint belum diisi — cron drain dilewati. Lihat docs/MIGRASI_SUPABASE.md.';
     return;
   end if;
 
@@ -372,3 +370,55 @@ begin
 
   raise notice 'Cron drain notifikasi aktif (tiap 5 menit).';
 end $$;
+
+-- ---------------------------------------------------------------------------
+-- RPC: prepare_notification_job — kirim SATU job tertentu (dipanggil trigger
+-- langsung setelah HTTP request dikirim ke Edge Function).
+-- Idempoten: job yang sudah dikirim tidak akan diproses ulang (return null).
+-- ---------------------------------------------------------------------------
+create or replace function public.prepare_notification_job(p_job_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_job public.notification_jobs;
+  v_tokens jsonb;
+begin
+  if p_job_id is null then
+    return null;
+  end if;
+
+  update public.notification_jobs j
+     set status = 'dispatched',
+         attempts = j.attempts + 1
+   where j.id = p_job_id
+     and j.status in ('queued', 'failed')
+     and j.attempts < j.max_attempts
+  returning * into v_job;
+
+  if v_job.id is null then
+    return null;
+  end if;
+
+  select coalesce(jsonb_agg(d.fcm_token), '[]'::jsonb)
+    into v_tokens
+    from public.user_devices d
+   where d.user_id = v_job.user_id and d.is_active;
+
+  return jsonb_build_object(
+    'job_id', v_job.id,
+    'user_id', v_job.user_id,
+    'booking_id', v_job.booking_id,
+    'title', v_job.title,
+    'body', v_job.body,
+    'data', v_job.data,
+    'attempts', v_job.attempts,
+    'max_attempts', v_job.max_attempts,
+    'tokens', v_tokens
+  );
+end;
+$$;
+
+revoke all on function public.prepare_notification_job(uuid) from public;

@@ -36,6 +36,19 @@ class Formatters {
     return _short.format(DateTime(parsed.year, parsed.month, parsed.day));
   }
 
+  /// Kunci idempotency untuk permintaan pembuatan pesanan.
+  ///
+  /// Dikirim ke server: bila jaringan putus dan permintaan diulang, server
+  /// mengenali kunci yang sama sehingga tidak membuat pesanan ganda.
+  static String idempotencyKey() {
+    final random = Random.secure();
+    final buf = StringBuffer();
+    for (var i = 0; i < 32; i++) {
+      buf.write(random.nextInt(16).toRadixString(16));
+    }
+    return 'app-${DateTime.now().millisecondsSinceEpoch}-${buf.toString()}';
+  }
+
   /// Kode booking unik, mis. "RARA-9X2K7Q"
   static String bookingCode() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';

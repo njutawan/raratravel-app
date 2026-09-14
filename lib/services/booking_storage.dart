@@ -66,6 +66,36 @@ class BookingStorage {
     await prefs.setStringList(_key, list);
   }
 
+  /// Simpan/perbarui satu pesanan (upsert berdasarkan kode).
+  ///
+  /// Dipakai saat data datang dari server: permintaan yang diulang
+  /// (idempotent) tidak boleh menghasilkan baris ganda di riwayat HP.
+  static Future<void> save(Booking booking) async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_key) ?? [];
+    final hasil = <String>[];
+    var ketemu = false;
+    for (final item in list) {
+      final ada = Booking.fromJson(item);
+      if (ada.kode == booking.kode) {
+        hasil.add(booking.toJson());
+        ketemu = true;
+      } else {
+        hasil.add(item);
+      }
+    }
+    if (!ketemu) hasil.add(booking.toJson());
+    await prefs.setStringList(_key, hasil);
+  }
+
+  /// Gabungkan daftar dari server ke riwayat HP (tanpa menghapus data lokal
+  /// yang belum sempat tersinkron: pesanan offline tetap tampil).
+  static Future<void> mergeFromServer(List<Booking> daftar) async {
+    for (final booking in daftar) {
+      await save(booking);
+    }
+  }
+
   static Future<void> updateStatus(String kode, String status) async {
     await markDirty(kode); // outbox: disinkron saat login berikutnya
     final prefs = await SharedPreferences.getInstance();

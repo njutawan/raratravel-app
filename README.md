@@ -58,18 +58,46 @@ raratravel_app/
 
 ### Konfigurasi Supabase (opsional selama migrasi)
 
-Firebase Auth dan FCM tetap digunakan. Supabase menjadi target katalog dan
-backend baru. Jangan commit key ke repository; berikan konfigurasi saat build:
+Firebase Auth dan FCM **tetap** digunakan; Supabase menggantikan Firestore
+sebagai tempat data (katalog, pesanan, perangkat, pembayaran). Jangan commit
+key ke repository — berikan konfigurasi saat build:
 
 ```powershell
 flutter pub get
 flutter run --dart-define=SUPABASE_URL=https://PROJECT.supabase.co `
-  --dart-define=SUPABASE_ANON_KEY=ANON_KEY
+  --dart-define=SUPABASE_ANON_KEY=ANON_KEY `
+  --dart-define=CATALOG_SOURCE=local `
+  --dart-define=BOOKING_WRITE=dual
 ```
 
-Migration PostgreSQL berada di `supabase/migrations/`. Jalankan dengan
-Supabase CLI setelah membuat project Supabase. Alur booking lama Firestore
-tetap dipertahankan sampai endpoint Edge Function dan migrasi data selesai.
+| Sakelar build | Pilihan | Arti |
+|---|---|---|
+| `CATALOG_SOURCE` | `local` / `supabase` | asal data rute, jadwal, harga |
+| `BOOKING_WRITE` | `dual` / `supabase` / `firestore` | tujuan penulisan pesanan |
+| `PAYMENTS_ENABLED` | `false` / `true` | tampilkan pembayaran online |
+| `EDGE_TIMEOUT` | detik (15) | batas tunggu panggilan server |
+
+Selama `BOOKING_WRITE=dual`, pesanan **tetap** ditulis ke Firestore sehingga
+tidak ada risiko kehilangan data; penulisan itu baru dimatikan (`supabase`)
+setelah seluruh langkah migrasi lolos checklist.
+
+Berkas terkait:
+
+| Berkas | Isi |
+|---|---|
+| `docs/MIGRASI_SUPABASE.md` | panduan lengkap: deploy, secrets, uji, impor data, rollback |
+| `supabase/migrations/*.sql` | 11 berkas migrasi (skema, RPC, trigger, seed, storage, admin) |
+| `supabase/functions/` | 10 Edge Function (auth sync, katalog, booking, bayar, notifikasi, admin) |
+| `lib/config/backend_config.dart` | sakelar migrasi di sisi aplikasi |
+| `lib/repositories/` | jembatan aplikasi → Edge Function |
+
+Uji backend tanpa Docker/Supabase CLI (butuh Python 3 + `pgserver`):
+
+```bash
+python3 -m venv /tmp/venv && /tmp/venv/bin/pip install pgserver   # sekali saja
+/tmp/venv/bin/python tools/db_check.py      # migrasi + 17 kelompok uji + kecocokan RPC
+node tools/ts_check.js                      # impor & nama ekspor Edge Function
+```
 
 ### 1. Installalat (sekali saja)
 

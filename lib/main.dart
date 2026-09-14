@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'app.dart';
+import 'config/backend_config.dart';
 import 'services/firebase_bootstrap.dart';
 import 'services/messaging_service.dart';
 import 'services/supabase_bootstrap.dart';
@@ -13,5 +14,7 @@ Future<void> main() async {
   await FirebaseBootstrap.init(); // gagal = mode offline, aplikasi tetap jalan
   if (FirebaseBootstrap.ready) await MessagingService.init(); // worker push
   await SupabaseBootstrap.init(); // katalog/booking cloud opsional saat migrasi
+  // Membantu dukungan: tampilkan backend mana yang sedang dipakai build ini.
+  debugPrint('Rara Travel: ${BackendConfig.deskripsi}');
   runApp(const RaraTravelApp());
 }

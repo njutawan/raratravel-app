@@ -2,9 +2,13 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../config/backend_config.dart';
 import '../models/booking.dart';
+import '../models/booking_status.dart';
+import '../repositories/booking_repository.dart';
 import '../services/auth_service.dart';
 import '../services/booking_storage.dart';
+import '../services/edge_client.dart';
 import '../services/firebase_bootstrap.dart';
 import '../services/firestore_service.dart';
 import '../services/whatsapp_service.dart';
@@ -18,7 +22,8 @@ import 'search_screen.dart';
 /// Riwayat pesanan.
 /// - Mode offline (Firebase belum setup) → data lokal di HP.
 /// - Mode cloud + tamu → ajakan login.
-/// - Mode cloud + login → stream real-time dari Firestore.
+/// - Mode cloud + login → daftar dari server (PostgreSQL bila aktif,
+///   jika belum: stream real-time Firestore seperti semula).
 class OrdersScreen extends StatefulWidget {
   /// Berubah setiap tab ini dibuka → memicu reload daftar.
   final int refreshToken;
@@ -49,9 +54,17 @@ class _OrdersScreenState extends State<OrdersScreen> {
     if (widget.refreshToken != oldWidget.refreshToken) _refresh();
   }
 
-  /// True bila pesanan tersimpan di cloud (login + Firebase siap).
+  /// True bila pesanan lama masih ditulis ke Firestore (login + Firebase siap).
   bool get _isCloud =>
-      FirebaseBootstrap.ready && AuthService.currentUser != null;
+      FirebaseBootstrap.ready &&
+      AuthService.currentUser != null &&
+      BackendConfig.writeFirestore;
+
+  /// Menyegarkan daftar: langganan cloud dibuang agar dimuat ulang.
+  void _reloadRemote() {
+    _cloudUid = null;
+    _refresh();
+  }
 
   Future<void> _cancel(Booking b) async {
     final ok = await showDialog<bool>(
@@ -75,7 +88,25 @@ class _OrdersScreenState extends State<OrdersScreen> {
     );
     if (ok == true) {
       var cloudOk = false;
-      if (_isCloud) {
+      if (BookingRepository.enabled) {
+        // Server: kursi dikembalikan + pemilik pesanan diverifikasi di sana.
+        try {
+          await BookingRepository.cancel(b.kode, reason: 'Dibatalkan pengguna');
+          cloudOk = true;
+        } on ApiException catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  e.message.isEmpty
+                      ? 'Gagal membatalkan di server. Coba lagi.'
+                      : e.message,
+                ),
+              ),
+            );
+          }
+        } catch (_) {}
+      } else if (_isCloud) {
         try {
           await FirestoreService.updateStatus(b.kode, 'Dibatalkan');
           cloudOk = true;
@@ -181,6 +212,12 @@ class _OrdersScreenState extends State<OrdersScreen> {
             InfoRow(label: 'Antar', value: b.antar),
             InfoRow(label: 'Kursi', value: '${b.kursi} kursi'),
             InfoRow(label: 'Pembayaran', value: b.metodeBayar),
+            if (b.paymentStatus.isNotEmpty)
+              InfoRow(
+                label: 'Status Bayar',
+                value: PaymentStatus.label(b.paymentStatus),
+                boldValue: true,
+              ),
             if (b.catatan.isNotEmpty)
               InfoRow(label: 'Catatan', value: b.catatan),
             const SizedBox(height: 8),
@@ -203,7 +240,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
             const SizedBox(height: 8),
             Row(
               children: [
-                if (b.status == 'Menunggu Konfirmasi')
+                if (b.bisaDibatalkan)
                   Expanded(
                     child: OutlinedButton(
                       onPressed: () {
@@ -213,8 +250,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                       child: const Text('Batalkan'),
                     ),
                   ),
-                if (b.status == 'Menunggu Konfirmasi')
-                  const SizedBox(width: 10),
+                if (b.bisaDibatalkan) const SizedBox(width: 10),
                 Expanded(
                   child: OutlinedButton(
                     style: OutlinedButton.styleFrom(
@@ -272,7 +308,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
         }
         if (_cloudUid != user.uid) {
           _cloudUid = user.uid;
-          _cloudStream = FirestoreService.userBookings(user.uid);
+          _cloudStream = BookingRepository.enabled
+              ? BookingRepository.watchMine()
+              : FirestoreService.userBookings(user.uid);
         }
         return Scaffold(
           appBar: AppBar(title: const Text('Pesananku')),
@@ -338,10 +376,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                   final tampil = snap.hasData ? snap.data! : lokal;
                   final daftar = _bookingList(
                     tampil,
-                    onRefresh: () async {
-                      _cloudUid = null; // paksa langganan ulang + muat lokal
-                      _refresh();
-                    },
+                    onRefresh: () async => _reloadRemote(),
                   );
                   if (snap.hasData || snap.hasError) return daftar;
                   // Menunggu cloud + ada data lokal → tampil + bar loading tipis.

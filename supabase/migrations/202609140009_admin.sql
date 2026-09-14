@@ -748,3 +748,79 @@ revoke all on function public.admin_stats(uuid) from public;
 revoke all on function public.admin_import_catalog(uuid, jsonb) from public;
 revoke all on function public.require_staff(uuid, text[]) from public;
 revoke all on function public.ensure_city(text) from public;
+
+-- ---------------------------------------------------------------------------
+-- RPC: staff_role — kembalikan peran bila pemanggil memang staf, else null.
+-- Dipakai Edge Function untuk menggerbangi aksi yang tidak lewat RPC admin
+-- (mis. menandai pembayaran transfer manual sudah diterima).
+-- ---------------------------------------------------------------------------
+create or replace function public.staff_role(p_user_id uuid)
+returns text
+language sql
+security definer
+stable
+set search_path = public, pg_temp
+as $$
+  select u.role
+    from public.users u
+   where u.id = p_user_id
+     and u.deleted_at is null
+     and u.role in ('operator', 'finance', 'admin', 'super_admin');
+$$;
+
+revoke all on function public.staff_role(uuid) from public;
+
+-- ---------------------------------------------------------------------------
+-- RPC: admin_create_payment — staf membuat tagihan untuk pesanan pelanggan
+-- (mis. mencatat transfer manual yang sudah masuk). Memakai ulang
+-- `create_payment` supaya aturan nominal/sisa tagihan tetap satu sumber.
+-- ---------------------------------------------------------------------------
+create or replace function public.admin_create_payment(
+  p_admin_user_id uuid,
+  p_kode text,
+  p_provider text default 'manual',
+  p_method text default null,
+  p_amount numeric default null,
+  p_provider_reference text default null,
+  p_checkout_url text default null,
+  p_expires_at timestamptz default null,
+  p_raw_response jsonb default '{}'::jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_admin public.users;
+  v_owner uuid;
+begin
+  v_admin := public.require_staff(p_admin_user_id, array['operator', 'finance', 'admin', 'super_admin']);
+
+  select b.user_id into v_owner
+    from public.bookings b
+   where b.kode = upper(trim(coalesce(p_kode, '')));
+
+  if v_owner is null then
+    perform public.raise_app_error('not_found', 'Pesanan tidak ditemukan', jsonb_build_object('kode', p_kode));
+  end if;
+
+  perform set_config('app.actor_user_id', v_admin.id::text, true);
+  perform set_config('app.actor_role', v_admin.role, true);
+  perform set_config('app.actor_note', 'tagihan dibuat staf', true);
+
+  return public.create_payment(
+    v_owner,
+    p_kode,
+    coalesce(nullif(trim(coalesce(p_provider, '')), ''), 'manual'),
+    p_method,
+    p_amount,
+    p_provider_reference,
+    p_checkout_url,
+    p_expires_at,
+    coalesce(p_raw_response, '{}'::jsonb)
+  );
+end;
+$$;
+
+revoke all on function public.admin_create_payment(uuid, text, text, text, numeric, text, text, timestamptz, jsonb) from public;
