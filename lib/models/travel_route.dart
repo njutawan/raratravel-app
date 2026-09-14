@@ -12,6 +12,10 @@ class TravelRoute {
   final String deskripsi;
   final bool populer;
 
+  /// Harga per jam keberangkatan (mis. jam 06.00 lebih mahal dari jam 19.00).
+  /// Kosong = semua jam memakai [harga].
+  final Map<String, int> hargaPerJam;
+
   const TravelRoute({
     required this.id,
     required this.asal,
@@ -24,7 +28,26 @@ class TravelRoute {
     required this.fasilitas,
     required this.deskripsi,
     this.populer = false,
+    this.hargaPerJam = const {},
   });
 
   String get title => '$asal – $tujuan';
+
+  /// Harga satu kursi untuk jam keberangkatan terpilih.
+  int hargaUntuk(String jam) => hargaPerJam[jam] ?? harga;
+
+  TravelRoute copyWith({Map<String, int>? hargaPerJam}) => TravelRoute(
+    id: id,
+    asal: asal,
+    tujuan: tujuan,
+    harga: harga,
+    durasi: durasi,
+    via: via,
+    jadwal: jadwal,
+    armada: armada,
+    fasilitas: fasilitas,
+    deskripsi: deskripsi,
+    populer: populer,
+    hargaPerJam: hargaPerJam ?? this.hargaPerJam,
+  );
 }

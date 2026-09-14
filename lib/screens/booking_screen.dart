@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import '../config/backend_config.dart';
 import '../models/booking.dart';
 import '../models/app_user.dart';
 import '../models/travel_route.dart';
+import '../repositories/booking_repository.dart';
 import '../services/booking_storage.dart';
 import '../services/auth_gate.dart';
 import '../services/auth_service.dart';
+import '../services/edge_client.dart';
 import '../services/firebase_bootstrap.dart';
 import '../services/firestore_service.dart';
 import '../theme/app_theme.dart';
@@ -60,7 +63,9 @@ class _BookingScreenState extends State<BookingScreen> {
     return AppConstants.promoCodes[kode] ?? -1;
   }
 
-  int get _subtotal => widget.route.harga * _kursi;
+  // Harga resmi berasal dari server (jadwal bisa beda harga tiap jam).
+  int get _hargaKursi => widget.route.hargaUntuk(widget.jam);
+  int get _subtotal => _hargaKursi * _kursi;
 
   int get _diskon {
     final p = _promoPersen;
@@ -111,7 +116,11 @@ class _BookingScreenState extends State<BookingScreen> {
     if (!mounted || user == null) return;
     setState(() => _loading = true);
 
-    final booking = Booking(
+    // Kode & kunci idempotency dibuat SEKALI: bila pengiriman diulang (jaringan
+    // putus, tombol ditekan dua kali), server mengenali permintaan yang sama
+    // sehingga tidak membuat pesanan ganda.
+    final idempotencyKey = BookingRepository.newIdempotencyKey();
+    var booking = Booking(
       kode: Formatters.bookingCode(),
       asal: widget.route.asal,
       tujuan: widget.route.tujuan,
@@ -132,7 +141,48 @@ class _BookingScreenState extends State<BookingScreen> {
     await BookingStorage.add(
       booking,
     ); // cache lokal (riwayat tetap ada offline)
-    if (FirebaseBootstrap.ready) {
+
+    // ---- Server baru (PostgreSQL): harga & kursi divalidasi di sana ----
+    if (BookingRepository.enabled) {
+      var percobaan = 0;
+      while (true) {
+        try {
+          final hasil = await BookingRepository.create(
+            draft: booking,
+            idempotencyKey: idempotencyKey,
+            userId: user.uid,
+          );
+          // Pakai versi server (kode & total resmi dari database).
+          booking = hasil.booking;
+          break;
+        } on ApiException catch (e) {
+          if (!mounted) return;
+          if (e.isPriceMismatch && percobaan == 0) {
+            final lanjut = await _tanyaHargaBerubah(e);
+            if (lanjut != true) {
+              setState(() => _loading = false);
+              return;
+            }
+            // Ulangi sekali dengan harga resmi dari server.
+            booking = booking.copyWith(
+              totalHarga: e.expectedTotal,
+              diskon: (e.details['discount'] as num?)?.toInt() ?? booking.diskon,
+            );
+            percobaan++;
+            continue;
+          }
+          setState(() => _loading = false);
+          _pesanError(e);
+          return;
+        } catch (_) {
+          // Gagal tak terduga → lanjut jalur lama di bawah (pesanan lokal sah).
+          break;
+        }
+      }
+    }
+
+    // ---- Jalur lama (Firestore) masih jalan selama mode 'dual' ----
+    if (FirebaseBootstrap.ready && BackendConfig.writeFirestore) {
       try {
         await FirestoreService.saveBooking(booking, user.uid);
         await BookingStorage.markMigrated(booking.kode);
@@ -162,6 +212,67 @@ class _BookingScreenState extends State<BookingScreen> {
       MaterialPageRoute(
         builder: (_) => CheckoutSuccessScreen(booking: booking),
       ),
+    );
+  }
+
+  /// Harga berubah di server (mis. admin memperbarui tarif). Tawarkan hitung
+  /// ulang supaya pengguna tidak membayar dengan angka lama.
+  Future<bool?> _tanyaHargaBerubah(ApiException e) {
+    final totalBaru = e.expectedTotal;
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Harga diperbarui'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Tarif rute ini baru saja diperbarui admin. Mohon periksa total terbaru:',
+            ),
+            const SizedBox(height: 12),
+            Text('Total sebelumnya: ${Formatters.idr(booking.totalHarga)}'),
+            Text(
+              'Total terbaru: ${Formatters.idr(totalBaru)}',
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: AppTheme.primary,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Nanti saja'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Pesan dengan harga baru'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Pesan kesalahan yang bisa dimengerti pengguna.
+  void _pesanError(ApiException e) {
+    String pesan;
+    if (e.isSeatsUnavailable) {
+      pesan = e.message.isEmpty
+          ? 'Kursi sudah habis. Pilih jadwal atau tanggal lain.'
+          : e.message;
+    } else if (e.isUnauthorized) {
+      pesan = 'Sesi login berakhir. Silakan masuk lagi.';
+    } else if (e.isPromoInvalid) {
+      pesan = e.message;
+    } else {
+      pesan = e.message.isEmpty
+          ? 'Gagal menyimpan pesanan. Coba lagi.'
+          : e.message;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(pesan), duration: const Duration(seconds: 5)),
     );
   }
 
@@ -287,7 +398,7 @@ class _BookingScreenState extends State<BookingScreen> {
                           ),
                         ),
                         Text(
-                          '${Formatters.idr(r.harga)}/kursi • ${r.durasi} ${r.via}',
+                          '${Formatters.idr(_hargaKursi)}/kursi • ${r.durasi} ${r.via}',
                           style: TextStyle(
                             color: Colors.grey.shade700,
                             fontSize: 13,
@@ -491,7 +602,7 @@ class _BookingScreenState extends State<BookingScreen> {
 
                 // Rincian + ekspektasi login (ditagih saat submit via OTP)
                 Text(
-                  '$_kursi kursi × ${Formatters.idr(r.harga)}. Pembayaran dikonfirmasi via WhatsApp admin.',
+                  '$_kursi kursi × ${Formatters.idr(_hargaKursi)}. Pembayaran dikonfirmasi via WhatsApp admin.',
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                 ),
                 const SizedBox(height: 8),

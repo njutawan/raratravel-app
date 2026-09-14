@@ -96,7 +96,7 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
                     style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                   ),
                   Text(
-                    Formatters.idr(r.harga),
+                    Formatters.idr(r.hargaUntuk(_jam)),
                     style: const TextStyle(
                       fontSize: 19,
                       fontWeight: FontWeight.bold,
@@ -171,7 +171,7 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
                 InfoRow(label: 'Durasi', value: '${r.durasi} ${r.via}'),
                 InfoRow(
                   label: 'Harga/kursi',
-                  value: Formatters.idr(r.harga),
+                  value: Formatters.idr(r.hargaUntuk(_jam)),
                   boldValue: true,
                 ),
                 InfoRow(label: 'Tanggal', value: Formatters.fullDate(_tanggal)),

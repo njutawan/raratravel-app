@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../data/dummy_data.dart';
 import '../models/travel_route.dart';
+import '../repositories/catalog_repository.dart';
 import '../services/whatsapp_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/constants.dart';
@@ -33,6 +34,10 @@ class _SearchScreenState extends State<SearchScreen> {
   late DateTime _tanggal;
   bool _termurahDulu = true;
 
+  // Hasil dari server (null → tampilkan data lokal lebih dulu).
+  List<TravelRoute>? _dariServer;
+  bool _memuatServer = false;
+
   @override
   void initState() {
     super.initState();
@@ -40,9 +45,42 @@ class _SearchScreenState extends State<SearchScreen> {
     _tujuan = widget.initialTujuan;
     _tanggal =
         widget.initialTanggal ?? DateTime.now().add(const Duration(days: 1));
+    _cariDariServer();
+  }
+
+  /// Ambil hasil dari katalog server (harga & kursi terbaru dari admin).
+  ///
+  /// Saat server belum aktif / gagal dihubungi, repositori otomatis memakai
+  /// data lokal sehingga layar tetap terisi.
+  Future<void> _cariDariServer() async {
+    if (!CatalogRepository.enabled || _memuatServer) return;
+    setState(() => _memuatServer = true);
+    final halaman = await CatalogRepository.searchRoutes(
+      asal: _asal,
+      tujuan: _tujuan,
+      tanggal: _tanggal,
+      sort: _termurahDulu ? 'price_asc' : 'price_desc',
+      limit: 50,
+    );
+    if (!mounted) return;
+    setState(() {
+      _dariServer = halaman.items;
+      _memuatServer = false;
+    });
+  }
+
+  /// Filter berubah: tampilkan data lokal seketika, lalu segarkan dari server.
+  void _ubahFilter(VoidCallback ubah) {
+    setState(() {
+      ubah();
+      _dariServer = null; // hindari hasil lama tampil dengan filter baru
+    });
+    _cariDariServer();
   }
 
   List<TravelRoute> get _hasil {
+    final dariServer = _dariServer;
+    if (dariServer != null) return dariServer;
     var list = DummyData.routes.where((r) {
       final cocokAsal = _asal == null || r.asal == _asal;
       final cocokTujuan = _tujuan == null || r.tujuan == _tujuan;
@@ -63,7 +101,7 @@ class _SearchScreenState extends State<SearchScreen> {
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 90)),
     );
-    if (picked != null) setState(() => _tanggal = picked);
+    if (picked != null) _ubahFilter(() => _tanggal = picked);
   }
 
   @override
@@ -142,7 +180,7 @@ class _SearchScreenState extends State<SearchScreen> {
             (c) => DropdownMenuItem(value: c, child: Text(c)),
           ),
         ],
-        onChanged: (v) => setState(() => _asal = v),
+        onChanged: (v) => _ubahFilter(() => _asal = v),
       ),
       DropdownButtonFormField<String>(
         initialValue: _tujuan,
@@ -153,7 +191,7 @@ class _SearchScreenState extends State<SearchScreen> {
             (c) => DropdownMenuItem(value: c, child: Text(c)),
           ),
         ],
-        onChanged: (v) => setState(() => _tujuan = v),
+        onChanged: (v) => _ubahFilter(() => _tujuan = v),
       ),
       InkWell(
         onTap: _pickDate,
@@ -185,7 +223,8 @@ class _SearchScreenState extends State<SearchScreen> {
       FilterChip(
         label: Text(_termurahDulu ? 'Termurah' : 'Termahal'),
         avatar: const Icon(Icons.sort, size: 18),
-        onSelected: (_) => setState(() => _termurahDulu = !_termurahDulu),
+        onSelected: (_) =>
+            _ubahFilter(() => _termurahDulu = !_termurahDulu),
         materialTapTargetSize: MaterialTapTargetSize.padded,
       ),
     ];
@@ -194,36 +233,45 @@ class _SearchScreenState extends State<SearchScreen> {
   /// Daftar hasil (dipakai ulang di layout HP & tablet).
   Widget _hasilList(List<TravelRoute> hasil) {
     return Expanded(
-      child: hasil.isEmpty
-          ? EmptyState(
-              icon: Icons.search_off_outlined,
-              title: 'Rute tidak ditemukan',
-              subtitle:
-                  'Coba ubah asal/tujuan, atau chat admin untuk rute custom.',
-              actionLabel: 'Chat Admin',
-              onAction: () => ExternalService.openWhatsApp(
-                'Halo *Rara Travel & Tour*, saya butuh rute ${_asal ?? '...'} → ${_tujuan ?? '...'}.',
-              ),
-            )
-          : ListView.separated(
-              padding: Adaptive.pagePadding(
-                context,
-                maxWidth: 720,
-                vertical: 14,
-                min: 14,
-              ),
-              itemCount: hasil.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
-              itemBuilder: (_, i) => RouteCard(
-                route: hasil[i],
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        RouteDetailScreen(route: hasil[i], tanggal: _tanggal),
-                  ),
-                ),
-              ),
-            ),
+      child: Column(
+        children: [
+          if (_memuatServer) const LinearProgressIndicator(minHeight: 3),
+          Expanded(child: _isiHasil(hasil)),
+        ],
+      ),
+    );
+  }
+
+  Widget _isiHasil(List<TravelRoute> hasil) {
+    if (hasil.isEmpty) {
+      return EmptyState(
+        icon: Icons.search_off_outlined,
+        title: 'Rute tidak ditemukan',
+        subtitle: 'Coba ubah asal/tujuan, atau chat admin untuk rute custom.',
+        actionLabel: 'Chat Admin',
+        onAction: () => ExternalService.openWhatsApp(
+          'Halo *Rara Travel & Tour*, saya butuh rute ${_asal ?? '...'} → ${_tujuan ?? '...'}.',
+        ),
+      );
+    }
+    return ListView.separated(
+      padding: Adaptive.pagePadding(
+        context,
+        maxWidth: 720,
+        vertical: 14,
+        min: 14,
+      ),
+      itemCount: hasil.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (_, i) => RouteCard(
+        route: hasil[i],
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) =>
+                RouteDetailScreen(route: hasil[i], tanggal: _tanggal),
+          ),
+        ),
+      ),
     );
   }
 }

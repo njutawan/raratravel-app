@@ -1,0 +1,75 @@
+name: Backend check
+
+# Menjalankan uji lokal backend (PostgreSQL) + pemeriksaan statis Edge Function
+# pada setiap perubahan. Tidak memerlukan Supabase/Docker: PostgreSQL 16 asli
+# dijalankan di dalam job lewat paket Python `pgserver`.
+#
+# Cakupan:
+#   * 11 migrasi supabase/migrations/*.sql
+#   * 17 kelompok uji perilaku (tools/db_smoke_test.sql)
+#   * kecocokan nama + parameter RPC dengan tanda tangan fungsi di database
+#   * impor relatif & nama ekspor Edge Function (tools/ts_check.js)
+#   * sintaks seluruh berkas TypeScript (esbuild)
+#   * 18 skenario end-to-end: Edge Function dijalankan sungguhan (tools/e2e)
+#   * berkas siap-tempel Dashboard (supabase/deploy-dashboard) tidak basi,
+#     dan bundelnya menjalani 18 skenario yang sama
+
+on:
+  push:
+    paths:
+      - "supabase/**"
+      - "tools/**"
+      - ".github/workflows/backend-check.yml"
+  pull_request:
+    paths:
+      - "supabase/**"
+      - "tools/**"
+      - ".github/workflows/backend-check.yml"
+  workflow_dispatch:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          # Node 22 diperlukan: menjalankan berkas .ts langsung (type stripping).
+          node-version: "22"
+
+      - name: Pasang pgserver (PostgreSQL 16 lokal)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pgserver "psycopg[binary]"
+
+      - name: Migrasi + uji perilaku + kecocokan RPC
+        run: python tools/db_check.py --dir /tmp/dbcheck
+
+      - name: Impor & nama ekspor Edge Function
+        run: node tools/ts_check.js
+
+      - name: End-to-end Edge Function (PostgreSQL tiruan Supabase)
+        run: node tools/e2e/run_e2e.mts
+
+      - name: Sintaks TypeScript (esbuild)
+        run: |
+          npm install --no-save esbuild@0.28.2
+          for f in $(find supabase/functions -name '*.ts'); do
+            ./node_modules/.bin/esbuild "$f" --outfile=/dev/null --log-level=error
+          done
+
+      - name: Berkas siap-tempel Dashboard tidak basi
+        run: |
+          node tools/bundle_functions.js
+          git diff --exit-code supabase/deploy-dashboard \
+            || { echo "Bundel usang — jalankan: node tools/bundle_functions.js"; exit 1; }
+
+      - name: End-to-end berkas siap-tempel Dashboard
+        run: E2E_FUNCTIONS_DIR=supabase/deploy-dashboard node tools/e2e/run_e2e.mts

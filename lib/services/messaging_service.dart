@@ -1,9 +1,13 @@
+import 'dart:io' show Platform;
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app.dart';
+import '../config/backend_config.dart';
+import 'edge_client.dart';
 import 'firestore_service.dart';
 
 /// Handler pesan saat aplikasi MATI TOTAL (isolate background).
@@ -19,6 +23,7 @@ Future<void> _pesanBackground(RemoteMessage message) async {
 /// Murni push (nol polling, nol timer) → dampak baterai praktis nol.
 class MessagingService {
   static const _tokenKey = 'rara_fcm_token_v1';
+  static const _appVersion = '1.0.0+1';
 
   /// Panggil sekali saat start (hanya bila Firebase siap).
   static Future<void> init() async {
@@ -79,9 +84,73 @@ class MessagingService {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid == null) return; // tamu → didaftar saat login berikutnya
       final prefs = await SharedPreferences.getInstance();
-      await FirestoreService.addFcmToken(uid, token);
+      if (BackendConfig.writeFirestore) {
+        await FirestoreService.addFcmToken(uid, token);
+      }
+      await _daftarkanPerangkatSupabase(token);
       await prefs.setString(_tokenKey, token);
     } catch (_) {}
+  }
+
+  /// Simpan token FCM ke `public.user_devices` (langkah 8 migrasi).
+  ///
+  /// Aman gagal: notifikasi lama (Firestore) tetap jalan sampai langkah
+  /// Firestore dimatikan.
+  static Future<void> _daftarkanPerangkatSupabase(String token) async {
+    if (!EdgeClient.ready) return;
+    try {
+      await EdgeClient.invoke(
+        'register-device',
+        body: {
+          'action': 'register',
+          'fcm_token': token,
+          'platform': _platform,
+          'app_version': _appVersion,
+          'locale': Platform.localeName,
+        },
+        auth: true,
+      );
+    } catch (e) {
+      debugPrint('Daftar perangkat Supabase gagal: $e');
+    }
+  }
+
+  static String get _platform {
+    if (Platform.isAndroid) return 'android';
+    if (Platform.isIOS) return 'ios';
+    return 'unknown';
+  }
+
+  /// Pascalogin: buat/perbarui profil Supabase + daftarkan perangkat.
+  ///
+  /// Edge Function `auth-user-sync` menyatukan keduanya sehingga login hanya
+  /// menambah satu perjalanan ke server.
+  static Future<void> sinkronSupabase() async {
+    if (!EdgeClient.ready) return;
+    try {
+      await FirebaseMessaging.instance.requestPermission();
+      final token = await FirebaseMessaging.instance.getToken();
+      final hasil = await EdgeClient.invoke(
+        'auth-user-sync',
+        body: {
+          'action': 'sync',
+          if (token != null) 'fcm_token': token,
+          'platform': _platform,
+          'app_version': _appVersion,
+          'locale': Platform.localeName,
+        },
+        auth: true,
+      );
+      if (token != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_tokenKey, token);
+      }
+      debugPrint(
+        'Supabase: profil tersinkron (${hasil['is_new'] == true ? 'akun baru' : 'akun lama'})',
+      );
+    } catch (e) {
+      debugPrint('Supabase: sinkron profil gagal ($e)');
+    }
   }
 
   static Future<void> registerToken(String uid) async {
@@ -90,10 +159,13 @@ class MessagingService {
       await messaging.requestPermission();
       final token = await messaging.getToken();
       if (token == null) return;
-      // Token sama seperti sebelumnya → skip write Firestore.
+      // Token sama seperti sebelumnya → tidak perlu menulis ulang.
       final prefs = await SharedPreferences.getInstance();
       if (prefs.getString(_tokenKey) == token) return;
-      await FirestoreService.addFcmToken(uid, token);
+      if (BackendConfig.writeFirestore) {
+        await FirestoreService.addFcmToken(uid, token);
+      }
+      await _daftarkanPerangkatSupabase(token);
       await prefs.setString(_tokenKey, token);
     } catch (e) {
       debugPrint('FCM register gagal: $e');
