@@ -119,33 +119,169 @@ supabase db push --dry-run           # melihat apa yang akan dijalankan
 supabase db push                     # menerapkan 202609120001 … 202609140009
 ```
 
-### 2.5 Bila memakai Dashboard saja (tanpa CLI)
+### 2.5 Jalur Dashboard (tanpa CLI) — lengkap
 
-1. **SQL Editor** → tempel isi `supabase/migrations/*.sql` **berurutan sesuai
-   nama berkas** (`202609120001_initial_catalog.sql` → `…_0009_admin.sql`),
-   satu berkas sekali jalan. Semua berkas idempoten (aman diulang).
-2. **Edge Functions** → buat 10 fungsi dengan nama sama seperti folder di
-   `supabase/functions/`, tempel isi `index.ts` (folder `_shared` ikut
-   diunggah). **Matikan “Verify JWT”** untuk semuanya.
-3. **Edge Functions → Manage secrets** → isi seperti §3.
-4. **Storage → New bucket** — hanya bila migrasi `0008` melaporkan
-   `PERINGATAN`: `public-assets` (public, 5 MB), `avatars` (public, 2 MB),
-   `payment-proofs` (privat, 5 MB); batasi tipe ke `image/jpeg, image/png,
-   image/webp` (+`application/pdf` untuk bukti transfer).
-5. **Storage → Policies** → buat `public_assets_read`: SELECT untuk role
-   `anon` + `authenticated`, ekspresi
-   `bucket_id in ('public-assets', 'avatars')`.
-6. **Database → Extensions** → aktifkan `pg_net`; `pg_cron` opsional.
+Cocok kalau komputer tidak memasang Node/Supabase CLI (mis. Windows tanpa WSL).
+Semua dikerjakan dari peramban; berkas yang perlu ditempel sudah disiapkan.
+
+| Yang ditempel | Berkas | Jumlah |
+|---|---|---|
+| Skema database | `supabase/migrations/*.sql` (urut nama) | 11 |
+| Edge Function | `supabase/deploy-dashboard/*.ts` (satu berkas per fungsi) | 10 |
+
+`supabase/deploy-dashboard/` berisi **berkas hasil bundel** — setiap fungsi
+sudah memuat `_shared/*.ts` di dalamnya, sehingga bisa ditempel di editor
+Dashboard yang hanya menerima satu berkas. Jangan diedit manual; bila kode
+fungsi berubah, buat ulang dengan `node tools/bundle_functions.js`
+(berkas ini teruji: 17/17 skenario e2e lulus memakai bundel tersebut).
+
+> **Tips Windows (PowerShell)** — menyalin isi berkas langsung ke papan klip:
+> ```powershell
+> Get-Content -Raw supabase\migrations\202609120001_initial_catalog.sql | Set-Clipboard
+> ```
+
+#### 2.5.1 Database — SQL Editor
+
+1. Dashboard → **SQL Editor** → *New query*.
+2. Tempel isi berkas migrasi **satu per satu, urut nama**, tekan **Run**,
+   lanjut ke berkas berikutnya. Jangan diacak: berkas `0001`–`0009` saling
+   melanjutkan.
+
+| Urut | Berkas | Isi |
+|---|---|---|
+| 1 | `202609120001_initial_catalog.sql` | tabel dasar (users, cities, routes, paket) |
+| 2 | `202609140000_shared_helpers.sql` | fungsi bantu (kode galat, normalisasi telepon) |
+| 3 | `202609140001_users_devices.sql` | `user_devices`, `auth_user_sync`, `resolve_user_id` |
+| 4 | `202609140002_catalog_schema.sql` | jadwal, harga, kendaraan, kolom katalog |
+| 5 | `202609140003_bookings.sql` | `bookings`, kursi, promo, `create_booking`, `cancel_booking` |
+| 6 | `202609140004_payments.sql` | `payments`, `apply_payment_event` |
+| 7 | `202609140005_notifications.sql` | antrean notifikasi + trigger status |
+| 8 | `202609140006_catalog_api.sql` | RPC katalog (`search_routes`, `catalog_cities`, …) |
+| 9 | `202609140007_catalog_seed.sql` | 17 kota, 12 rute, 6 kendaraan, 10 paket |
+| 10 | `202609140008_storage.sql` | `media_assets` + bucket Storage |
+| 11 | `202609140009_admin.sql` | `require_staff`, impor data lama, statistik admin |
+
+3. Periksa: **Table Editor** → `cities` berisi 17 baris; ada tabel `bookings`,
+   `payments`, `user_devices`, `media_assets`. **Database → Functions** memuat
+   `create_booking`, `search_routes`, `catalog_cities`, dll.
+
+#### 2.5.2 Storage
+
+Berkas `0008` biasanya sudah membuat bucketnya. Bila pada langkah 10 muncul
+`PERINGATAN [0008]` (peran SQL Editor tidak berhak menulis ke skema storage),
+buat manual di **Storage → New bucket**:
+
+| Bucket | Public? | Batas | Tipe diizinkan |
+|---|---|---|---|
+| `public-assets` | ya | 5 MB | `image/jpeg`, `image/png`, `image/webp` |
+| `avatars` | ya | 2 MB | `image/jpeg`, `image/png`, `image/webp` |
+| `payment-proofs` | tidak | 5 MB | jpg, png, webp, `application/pdf` |
+
+Lalu **Storage → Policies → New policy → For full customization** pada bucket
+`public-assets`: nama `public_assets_read`, operasi **SELECT**, role
+`anon` + `authenticated`, ekspresi `bucket_id in ('public-assets', 'avatars')`.
+(`payment-proofs` sengaja **tanpa** policy — aksesnya hanya lewat Edge Function.)
+
+#### 2.5.3 Secrets
+
+**Edge Functions → Manage secrets** (tingkat proyek, bukan per fungsi) → isi
+sesuai tabel di §3. Yang wajib: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
+`FIREBASE_PROJECT_ID`; untuk notifikasi: `FIREBASE_SERVICE_ACCOUNT`,
+`NOTIFY_WEBHOOK_SECRET` (bebas, mis. 48 karakter acak).
+
+Nilai `FIREBASE_SERVICE_ACCOUNT` = **isi berkas JSON service account dalam satu
+baris**. Di PowerShell:
+
+```powershell
+(Get-Content -Raw "$env:USERPROFILE\kunci\firebase-sa.json" | ConvertFrom-Json | ConvertTo-Json -Compress) | Set-Clipboard
+```
+
+`SUPABASE_URL` = `https://<project-ref>.supabase.co`;
+`SUPABASE_SERVICE_ROLE_KEY` dan anon key ada di **Settings → API**.
+
+#### 2.5.4 Deploy 10 Edge Function
+
+Dashboard → **Edge Functions** → *Deploy a new function* → **Via Editor**.
+Untuk setiap baris di bawah: isi **Name** persis seperti kolom pertama,
+tempel isi berkas di kolom kedua, **matikan “Verify JWT”**, lalu **Deploy**.
+(Ulangi 10 kali.)
+
+| Nama fungsi | Berkas tempel | Kegunaan |
+|---|---|---|
+| `auth-user-sync` | `deploy-dashboard/auth-user-sync.ts` | Firebase UID → user + perangkat |
+| `register-device` | `deploy-dashboard/register-device.ts` | simpan token FCM |
+| `search-routes` | `deploy-dashboard/search-routes.ts` | katalog publik + pagination |
+| `create-booking` | `deploy-dashboard/create-booking.ts` | buat pesanan (harga & kursi dari server) |
+| `manage-booking` | `deploy-dashboard/manage-booking.ts` | riwayat, detail, batal, bayar |
+| `notify-booking-status` | `deploy-dashboard/notify-booking-status.ts` | kirim notifikasi FCM |
+| `payment-intent` | `deploy-dashboard/payment-intent.ts` | tagihan (Midtrans/manual) |
+| `payment-webhook` | `deploy-dashboard/payment-webhook.ts` | callback provider pembayaran |
+| `storage-sign` | `deploy-dashboard/storage-sign.ts` | tautan unggah/unduh berkas |
+| `admin-import` | `deploy-dashboard/admin-import.ts` | impor data lama + statistik |
+
+```powershell
+Get-Content -Raw supabase\deploy-dashboard\search-routes.ts | Set-Clipboard
+```
+
+Setelah selesai, tiap fungsi harus berstatus **ACTIVE**. Ingat: “Verify JWT”
+harus **OFF** di semuanya — login memakai Firebase, dan Supabase tidak mengenal
+token itu (kalau lupa, aplikasi akan menerima galat 401 dari gerbang Supabase).
+
+#### 2.5.5 Setelan notifikasi (SQL Editor)
+
+```sql
+create extension if not exists pg_net;
+alter database postgres set app.settings.notify_endpoint =
+  'https://<project-ref>.supabase.co/functions/v1/notify-booking-status';
+alter database postgres set app.settings.notify_secret = '<NOTIFY_WEBHOOK_SECRET>';
+select pg_reload_conf();
+```
+
+Mengaktifkan ekstensi juga bisa lewat **Database → Extensions** (`pg_net`;
+`pg_cron` opsional untuk drain tiap 5 menit).
+
+#### 2.5.6 Verifikasi tanpa CLI
+
+Di PowerShell (perhatikan: pakai `curl.exe`, bukan alias `curl`):
+
+```powershell
+$URL  = "https://<project-ref>.supabase.co"
+$ANON = "<anon-key>"
+
+# 1. katalog publik: harus berisi 17 kota
+Invoke-RestMethod "$URL/rest/v1/rpc/catalog_cities" -Method Post `
+  -Headers @{ apikey=$ANON; Authorization="Bearer $ANON"; "Content-Type"="application/json" } `
+  -Body "{}" | Format-Table -AutoSize
+
+# 2. pencarian rute (publik)
+Invoke-RestMethod "$URL/rest/v1/rpc/search_routes" -Method Post `
+  -Headers @{ apikey=$ANON; Authorization="Bearer $ANON"; "Content-Type"="application/json" } `
+  -Body '{"p_limit":3}'
+
+# 3. fungsi harus menolak tanpa token (401), bukan 500/404
+try {
+  Invoke-RestMethod "$URL/functions/v1/manage-booking" -Method Post `
+    -Headers @{ apikey=$ANON; "Content-Type"="application/json" } -Body '{"action":"history"}'
+} catch { $_.Exception.Response.StatusCode.value__ }   # harapan: 401
+```
+
+Di Dashboard, pastikan pula: **Edge Functions** → 10 fungsi `ACTIVE`;
+**Storage** → 3 bucket ada; **Settings → API** → `service_role` **tidak** pernah
+dipakai di aplikasi Flutter.
+
+Selanjutnya uji dengan token Firebase nyata: jalankan aplikasi
+(`flutter run --dart-define=…`, §5), lalu pakai contoh curl §7 dengan
+`Authorization: Bearer <token Firebase>`.
 
 ### 2.6 Titik periksa tiap tahap
 
-| Setelah langkah | Tanda berhasil |
-|---|---|
-| 4 (migrasi) | `supabase migration list` tidak menyisakan kolom remote kosong; tabel `bookings`, `payments`, `user_devices`, `media_assets` ada di Table Editor; `cities` berisi 17 baris |
-| 5 (secrets) | `supabase secrets list` memuat `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `FIREBASE_PROJECT_ID`, `NOTIFY_WEBHOOK_SECRET`, `FIREBASE_SERVICE_ACCOUNT` |
-| 6 (deploy) | `supabase functions list` menampilkan 10 fungsi berstatus `ACTIVE` |
-| 7 (setelan) | `select current_setting('app.settings.notify_endpoint', true);` tidak kosong |
-| 8 (verifikasi) | `catalog_cities` & `search_routes` menjawab 200; bucket `public-assets` & `payment-proofs` ada |
+| Setelah langkah | Lewat CLI | Lewat Dashboard |
+|---|---|---|
+| 4 (migrasi) | `supabase migration list` tidak menyisakan kolom remote kosong | Table Editor: ada `bookings`, `payments`, `user_devices`, `media_assets`; `cities` 17 baris |
+| 5 (secrets) | `supabase secrets list` memuat 4–6 nama yang diisi | Edge Functions → Manage secrets menampilkan daftar yang sama |
+| 6 (deploy) | `supabase functions list` menampilkan 10 fungsi `ACTIVE` | Edge Functions: 10 fungsi `ACTIVE`, “Verify JWT” semuanya OFF |
+| 7 (setelan) | `select current_setting('app.settings.notify_endpoint', true);` tidak kosong | SQL Editor: jalankan `select current_setting('app.settings.notify_endpoint', true);` |
+| 8 (verifikasi) | `bash tools/setup_supabase.sh --step 8` | perintah PowerShell §2.5.6 |
 
 ### 2.7 Kendala yang sering muncul
 
@@ -210,6 +346,7 @@ di `supabase/config.toml`) karena otentikasi memakai token Firebase yang
 diperiksa di dalam fungsi.
 
 Cara tercepat: `bash tools/setup_supabase.sh --step 6` (memeriksa satu per satu).
+Tanpa CLI? Pakai berkas siap tempel `supabase/deploy-dashboard/<nama>.ts` — lihat §2.5.4.
 Bila dikerjakan manual, untuk setiap nama fungsi di bawah jalankan:
 
 ```bash
@@ -442,7 +579,9 @@ Promo `RARAHEMAT`: potongan 10%, maksimal Rp50.000.
 |---|---|
 | `supabase/migrations/*.sql` | skema, RPC, trigger, seed, storage, admin |
 | `supabase/functions/README.md` | daftar Edge Function + contoh panggilan |
-| `tools/setup_supabase.sh` | penyiapan proyek: migrasi, secrets, deploy, verifikasi |
+| `tools/setup_supabase.sh` | penyiapan proyek via CLI: migrasi, secrets, deploy, verifikasi |
+| `supabase/deploy-dashboard/*.ts` | 10 fungsi siap tempel untuk Dashboard (hasil bundel) |
+| `tools/bundle_functions.js` | membuat ulang berkas siap tempel |
 | `.env.supabase.example` | contoh setelan lokal (salin jadi `.env.supabase`) |
 | `tools/db_smoke_test.sql` | 17 kelompok uji database (jalankan lokal) |
 | `tools/generate_catalog_seed.py` | membuat ulang seed katalog dari `dummy_data.dart` |

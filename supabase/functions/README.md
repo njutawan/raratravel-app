@@ -193,6 +193,14 @@ Perubahan skema mengikuti berkas `supabase/migrations/*.sql`; uji lokalnya
 `tools/db_smoke_test.sql` (`SEMUA OK (11 migrasi)` = seluruh migrasi + 17
 kelompok uji lulus).
 
+## Deploy tanpa CLI (Dashboard)
+
+Setiap fungsi punya berkas siap tempel di `supabase/deploy-dashboard/<nama>.ts`
+(hasil `node tools/bundle_functions.js`; sudah memuat seluruh `_shared/*.ts`,
+jadi cukup satu berkas per fungsi). Dashboard → Edge Functions → *Deploy a new
+function* → *Via Editor* → tempel → **Verify JWT: OFF** → Deploy.
+Langkah lengkapnya: `MIGRASI_SUPABASE.md` §2.5.
+
 ## Uji lokal (tanpa Deno)
 
 Sebelum `supabase functions deploy`, jalankan dari akar repositori:
@@ -201,6 +209,7 @@ Sebelum `supabase functions deploy`, jalankan dari akar repositori:
 /tmp/venv/bin/python tools/db_check.py   # migrasi + uji perilaku database + kecocokan RPC
 node tools/ts_check.js                   # impor & nama ekspor antarberkas
 node tools/e2e/run_e2e.mts               # fungsi BENAR-BENAR dijalankan (17 skenario)
+E2E_FUNCTIONS_DIR=supabase/deploy-dashboard node tools/e2e/run_e2e.mts   # 17 skenario pada berkas siap tempel
 ```
 
 `tools/e2e/run_e2e.mts` menjalankan berkas `index.ts` yang sama di dalam Node 22

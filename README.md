@@ -77,8 +77,10 @@ cp .env.supabase.example .env.supabase   # isi project ref, password DB, project
 bash tools/setup_supabase.sh             # ada juga --check dan --step <n>
 ```
 
-Panduan manualnya (termasuk cara lewat Dashboard tanpa CLI) ada di
-`MIGRASI_SUPABASE.md` §2. Jangan commit key ke repository — konfigurasi
+Tanpa Supabase CLI? Semua bisa lewat Dashboard: tempel 11 berkas
+`supabase/migrations/*.sql` di SQL Editor, lalu 10 berkas siap tempel
+`supabase/deploy-dashboard/*.ts` di Edge Functions (matikan “Verify JWT”).
+Langkah bergambarnya (termasuk tips PowerShell) ada di `MIGRASI_SUPABASE.md` §2.5. Jangan commit key ke repository — konfigurasi
 aplikasi diberikan saat build:
 
 ```powershell
@@ -106,6 +108,7 @@ Berkas terkait:
 |---|---|
 | `MIGRASI_SUPABASE.md` | panduan lengkap: penyiapan, deploy, secrets, uji, impor data, rollback |
 | `tools/setup_supabase.sh` | skrip penyiapan proyek (8 langkah, `--check`, `--step`) |
+| `supabase/deploy-dashboard/` | 10 Edge Function siap tempel untuk Dashboard (tanpa CLI) |
 | `.env.supabase.example` | contoh setelan lokal (salin jadi `.env.supabase`, jangan di-commit) |
 | `supabase/migrations/*.sql` | 11 berkas migrasi (skema, RPC, trigger, seed, storage, admin) |
 | `supabase/functions/` | 10 Edge Function (auth sync, katalog, booking, bayar, notifikasi, admin) |

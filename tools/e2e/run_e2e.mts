@@ -27,7 +27,13 @@ import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 
 const REPO = path.resolve(import.meta.dirname, "..", "..");
-const FUNCTIONS = path.join(REPO, "supabase", "functions");
+// Setelan bawaan: berkas sumber. Untuk menguji berkas siap-tempel Dashboard
+// (hasil `tools/bundle_functions.js`):
+//   E2E_FUNCTIONS_DIR=supabase/deploy-dashboard node tools/e2e/run_e2e.mts
+const DIR_FUNGSI = process.env.E2E_FUNCTIONS_DIR;
+const FUNCTIONS = DIR_FUNGSI
+  ? path.resolve(REPO, DIR_FUNGSI)
+  : path.join(REPO, "supabase", "functions");
 const PYTHON = existsSync("/tmp/venv/bin/python") ? "/tmp/venv/bin/python" : "python3";
 const PROJECT = "raratravel-uji";
 const KID = "uji-kid";
@@ -199,7 +205,9 @@ async function muatFungsi(nama: string): Promise<Handler> {
   pasangShimDeno((h) => {
     handler = h;
   });
-  const berkas = path.join(FUNCTIONS, nama, "index.ts");
+  const berkas = DIR_FUNGSI
+    ? path.join(FUNCTIONS, `${nama}.ts`)
+    : path.join(FUNCTIONS, nama, "index.ts");
   await import(`${pathToFileURL(berkas).href}?v=${versi++}`);
   if (!handler) throw new Error(`Deno.serve tidak dipanggil oleh ${nama}`);
   cache.set(nama, handler);

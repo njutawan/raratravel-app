@@ -11,6 +11,8 @@ name: Backend check
 #   * impor relatif & nama ekspor Edge Function (tools/ts_check.js)
 #   * sintaks seluruh berkas TypeScript (esbuild)
 #   * 17 skenario end-to-end: Edge Function dijalankan sungguhan (tools/e2e)
+#   * berkas siap-tempel Dashboard (supabase/deploy-dashboard) tidak basi,
+#     dan bundelnya menjalani 17 skenario yang sama
 
 on:
   push:
@@ -45,7 +47,7 @@ jobs:
       - name: Pasang pgserver (PostgreSQL 16 lokal)
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pgserver
+          python -m pip install pgserver "psycopg[binary]"
 
       - name: Migrasi + uji perilaku + kecocokan RPC
         run: python tools/db_check.py --dir /tmp/dbcheck
@@ -62,3 +64,12 @@ jobs:
           for f in $(find supabase/functions -name '*.ts'); do
             ./node_modules/.bin/esbuild "$f" --outfile=/dev/null --log-level=error
           done
+
+      - name: Berkas siap-tempel Dashboard tidak basi
+        run: |
+          node tools/bundle_functions.js
+          git diff --exit-code supabase/deploy-dashboard \
+            || { echo "Bundel usang — jalankan: node tools/bundle_functions.js"; exit 1; }
+
+      - name: End-to-end berkas siap-tempel Dashboard
+        run: E2E_FUNCTIONS_DIR=supabase/deploy-dashboard node tools/e2e/run_e2e.mts
