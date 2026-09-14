@@ -130,6 +130,22 @@ Semua dikerjakan dari peramban; berkas yang perlu ditempel sudah disiapkan.
 | Skema database | `supabase/migrations/*.sql` (urut nama) | 11 |
 | Edge Function | `supabase/deploy-dashboard/*.ts` (satu berkas per fungsi) | 10 |
 
+Dua skrip Windows membuat jalur ini jauh lebih ringkas (jalankan dari akar repo
+di PowerShell):
+
+```powershell
+# 1) memandu menempel 11 migrasi: salin otomatis + tunggu Enter tiap berkas
+.\tools\paste_migrations.ps1
+
+# 2) memeriksa hasilnya kapan saja (tabel, RPC katalog, Storage, 10 fungsi)
+.\tools\verify_supabase.ps1 -AnonKey "<kunci publik>"
+.\tools\verify_supabase.ps1 -EnvFile .env.supabase -ServiceKey "<kunci server>"
+```
+
+`verify_supabase.ps1` mencetak laporan ✔/✖ per pemeriksaan beserta saran
+perbaikannya, dan keluar dengan kode 1 bila ada yang belum beres — jadi bisa
+dipakai di skrip otomatis (mis. GitHub Actions self-hosted / Task Scheduler).
+
 `supabase/deploy-dashboard/` berisi **berkas hasil bundel** — setiap fungsi
 sudah memuat `_shared/*.ts` di dalamnya, sehingga bisa ditempel di editor
 Dashboard yang hanya menerima satu berkas. Jangan diedit manual; bila kode
@@ -255,7 +271,10 @@ Mengaktifkan ekstensi juga bisa lewat **Database → Extensions** (`pg_net`;
 
 #### 2.5.6 Verifikasi tanpa CLI
 
-Di PowerShell (perhatikan: pakai `curl.exe`, bukan alias `curl`):
+Cara tercepat: ` .\tools\verify_supabase.ps1 -AnonKey "<kunci publik>"`.
+Skrip itu menjalankan seluruh pemeriksaan di bawah ini sekaligus.
+
+Manual (perhatikan: pakai `curl.exe`, bukan alias `curl`):
 
 ```powershell
 $URL  = "https://<project-ref>.supabase.co"
@@ -621,6 +640,8 @@ Promo `RARAHEMAT`: potongan 10%, maksimal Rp50.000.
 | `supabase/functions/README.md` | daftar Edge Function + contoh panggilan |
 | `tools/setup_supabase.sh` | penyiapan proyek via CLI: migrasi, secrets, deploy, verifikasi |
 | `supabase/deploy-dashboard/*.ts` | 10 fungsi siap tempel untuk Dashboard (hasil bundel) |
+| `tools/paste_migrations.ps1` | panduan Windows: salin 11 migrasi ke papan klip satu per satu |
+| `tools/verify_supabase.ps1` | pemeriksa kesiapan proyek (REST, migrasi, Storage, 10 fungsi) |
 | `tools/bundle_functions.js` | membuat ulang berkas siap tempel |
 | `.env.supabase.example` | contoh setelan lokal (salin jadi `.env.supabase`) |
 | `tools/db_smoke_test.sql` | 17 kelompok uji database (jalankan lokal) |

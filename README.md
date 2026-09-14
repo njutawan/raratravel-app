@@ -80,7 +80,14 @@ bash tools/setup_supabase.sh             # ada juga --check dan --step <n>
 Tanpa Supabase CLI? Semua bisa lewat Dashboard: tempel 11 berkas
 `supabase/migrations/*.sql` di SQL Editor, lalu 10 berkas siap tempel
 `supabase/deploy-dashboard/*.ts` di Edge Functions (matikan “Verify JWT”).
-Langkah bergambarnya (termasuk tips PowerShell) ada di `MIGRASI_SUPABASE.md` §2.5. Jangan commit key ke repository — konfigurasi
+Langkah bergambarnya (termasuk tips PowerShell) ada di `MIGRASI_SUPABASE.md` §2.5.
+
+Di Windows ada dua pembantu:
+
+```powershell
+.\tools\paste_migrations.ps1                              # panduan menempel 11 migrasi
+.\tools\verify_supabase.ps1 -AnonKey "<kunci publik>"      # periksa kesiapan proyek
+``` Jangan commit key ke repository — konfigurasi
 aplikasi diberikan saat build:
 
 ```powershell
@@ -110,6 +117,7 @@ Berkas terkait:
 | `MIGRASI_SUPABASE.md` | panduan lengkap: penyiapan, deploy, secrets, uji, impor data, rollback |
 | `tools/setup_supabase.sh` | skrip penyiapan proyek (8 langkah, `--check`, `--step`) |
 | `supabase/deploy-dashboard/` | 10 Edge Function siap tempel untuk Dashboard (tanpa CLI) |
+| `tools/verify_supabase.ps1` | pemeriksa kesiapan proyek Supabase (Windows) |
 | `.env.supabase.example` | contoh setelan lokal (salin jadi `.env.supabase`, jangan di-commit) |
 | `supabase/migrations/*.sql` | 11 berkas migrasi (skema, RPC, trigger, seed, storage, admin) |
 | `supabase/functions/` | 10 Edge Function (auth sync, katalog, booking, bayar, notifikasi, admin) |
