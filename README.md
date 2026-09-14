@@ -93,6 +93,7 @@ flutter run --dart-define=SUPABASE_URL=https://PROJECT.supabase.co `
 
 | Sakelar build | Pilihan | Arti |
 |---|---|---|
+| `SUPABASE_ANON_KEY` | `sb_publishable_…` / `eyJ…` | kunci publik proyek (aman di aplikasi) |
 | `CATALOG_SOURCE` | `local` / `supabase` | asal data rute, jadwal, harga |
 | `BOOKING_WRITE` | `dual` / `supabase` / `firestore` | tujuan penulisan pesanan |
 | `PAYMENTS_ENABLED` | `false` / `true` | tampilkan pembayaran online |
@@ -127,7 +128,7 @@ node tools/e2e/run_e2e.mts                  # Edge Function benar-benar dijalank
 
 `run_e2e.mts` menjalankan kesepuluh Edge Function di atas PostgreSQL 16 asli
 (tiruan PostgREST + Storage) dengan token Firebase, FCM, dan Snap yang ditiru —
-17 skenario: katalog, login, perangkat, pemesanan (harga/kursi/idempotensi),
+18 skenario: katalog, login, perangkat, pemesanan (harga/kursi/idempotensi),
 pembayaran manual & webhook Midtrans, notifikasi FCM, unggah berkas, impor
 admin, hingga pemeriksaan batas peran.
 

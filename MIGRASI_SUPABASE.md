@@ -33,7 +33,8 @@ PostgreSQL (Supabase) tanpa mengganggu aplikasi yang sudah dipakai pelanggan.
 | 11 | Storage + impor admin | `…_0008_storage.sql`, `…_0009_admin.sql`, `storage-sign`, `admin-import` | ✅ |
 | 12 | Matikan penulisan booking ke Firestore | `--dart-define=BOOKING_WRITE=supabase` | ⛔ **belum** (lihat §8) |
 
-Uji lokal yang sudah dijalankan: `tools/db_smoke_test.sql` (17 kelompok uji)
+Uji lokal yang sudah dijalankan: `tools/e2e/run_e2e.mts` (18 skenario, termasuk
+penerimaan kunci Supabase model baru) + `tools/db_smoke_test.sql` (17 kelompok uji)
 hijau di PostgreSQL 16 untuk seluruh migrasi `0000`–`0009`.
 
 ---
@@ -133,7 +134,7 @@ Semua dikerjakan dari peramban; berkas yang perlu ditempel sudah disiapkan.
 sudah memuat `_shared/*.ts` di dalamnya, sehingga bisa ditempel di editor
 Dashboard yang hanya menerima satu berkas. Jangan diedit manual; bila kode
 fungsi berubah, buat ulang dengan `node tools/bundle_functions.js`
-(berkas ini teruji: 17/17 skenario e2e lulus memakai bundel tersebut).
+(berkas ini teruji: 18/18 skenario e2e lulus memakai bundel tersebut).
 
 > **Tips Windows (PowerShell)** — menyalin isi berkas langsung ke papan klip:
 > ```powershell
@@ -182,22 +183,34 @@ Lalu **Storage → Policies → New policy → For full customization** pada buc
 `anon` + `authenticated`, ekspresi `bucket_id in ('public-assets', 'avatars')`.
 (`payment-proofs` sengaja **tanpa** policy — aksesnya hanya lewat Edge Function.)
 
-#### 2.5.3 Secrets
+#### 2.5.3 Secrets — apa saja yang perlu diisi
+
+Supabase **sudah menyediakan** `SUPABASE_URL` dan kunci server untuk setiap Edge
+Function secara otomatis, jadi yang perlu Anda isi manual hanya yang berkaitan
+dengan Firebase (dan Midtrans bila dipakai). Ringkasnya:
+
+| Secret | Perlu diisi manual? | Kegunaan |
+|---|---|---|
+| `SUPABASE_URL` | **tidak** (otomatis) | alamat proyek — platform menyediakannya |
+| kunci server (`SUPABASE_SERVICE_ROLE_KEY` atau `SUPABASE_SECRET_KEYS`) | **tidak** (otomatis) | akses database dari Edge Function |
+| `FIREBASE_PROJECT_ID` | **ya** | memverifikasi ID token Firebase |
+| `FIREBASE_SERVICE_ACCOUNT` | ya (untuk notifikasi FCM) | kirim push |
+| `NOTIFY_WEBHOOK_SECRET` | ya (bebas, mis. 48 karakter acak) | kunci pemanggil webhook notifikasi |
+| `MIDTRANS_SERVER_KEY`, `MIDTRANS_IS_PRODUCTION` | bila bayar online | Snap Midtrans |
+| `XENDIT_CALLBACK_TOKEN`, `PAYMENT_HMAC_SECRET` | bila dipakai | verifikasi webhook provider lain |
 
 **Edge Functions → Manage secrets** (tingkat proyek, bukan per fungsi) → isi
-sesuai tabel di §3. Yang wajib: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
-`FIREBASE_PROJECT_ID`; untuk notifikasi: `FIREBASE_SERVICE_ACCOUNT`,
-`NOTIFY_WEBHOOK_SECRET` (bebas, mis. 48 karakter acak).
-
-Nilai `FIREBASE_SERVICE_ACCOUNT` = **isi berkas JSON service account dalam satu
-baris**. Di PowerShell:
+baris yang perlu saja. Nilai `FIREBASE_SERVICE_ACCOUNT` = **isi berkas JSON
+service account dalam satu baris**; di PowerShell:
 
 ```powershell
 (Get-Content -Raw "$env:USERPROFILE\kunci\firebase-sa.json" | ConvertFrom-Json | ConvertTo-Json -Compress) | Set-Clipboard
 ```
 
-`SUPABASE_URL` = `https://<project-ref>.supabase.co`;
-`SUPABASE_SERVICE_ROLE_KEY` dan anon key ada di **Settings → API**.
+Perhatikan kotak komentar di dalam berkas JSON itu **tidak ada** di versi
+`ConvertTo-Json` — hasilnya memang tanpa spasi/baris baru seperti yang
+dibutuhkan. Bila ragu, tempel apa adanya dari editor teks lalu hapus baris
+barunya.
 
 #### 2.5.4 Deploy 10 Edge Function
 
@@ -313,6 +326,30 @@ Scheduled Function Supabase tiap 5 menit dengan body `{"drain": true}`).
 
 ## 3. Secrets Edge Function (sekali saja)
 
+### 3.1 Kunci Supabase yang dibutuhkan
+
+Supabase mengganti penamaan kunci pada 2025–2026; **keduanya diterima** oleh
+kode di repositori ini.
+
+| Kunci | Bentuk | Aman di aplikasi? | Dipakai untuk |
+|---|---|---|---|
+| **publishable** (baru) | `sb_publishable_…` | **ya** | aplikasi Flutter (`SUPABASE_ANON_KEY`) |
+| `anon` (lama) | JWT `eyJ…` | ya | idem, penamaan lama |
+| **secret** (baru) | `sb_secret_…` | **tidak** | Edge Function (akses database, melewati RLS) |
+| `service_role` (lama) | JWT `eyJ…` | tidak | idem, penamaan lama |
+
+Dashboard → **Settings → API Keys** (proyek lama: tombol *Create new API keys*;
+kunci lama tetap berlaku sampai dimatikan). Kunci publik juga bisa diambil dari
+tombol **Connect** di dashboard.
+
+Yang **tidak** dibutuhkan: JWT secret, password database (hanya untuk
+`supabase link`/CLI), `SUPABASE_DB_URL`, dan kunci lain di halaman Settings →
+API. Edge Function menerima `SUPABASE_URL` + kunci server **otomatis** dari
+platform (`SUPABASE_SERVICE_ROLE_KEY`, atau `SUPABASE_SECRET_KEYS`/
+`SUPABASE_SECRET_KEY` pada proyek berkunci baru) — lihat §2.5.3.
+
+### 3.2 Mengisi secrets
+
 Dashboard → Edge Functions → **Manage secrets**, atau:
 
 ```bash
@@ -327,8 +364,8 @@ supabase secrets set \
 
 | Secret | Wajib | Fungsi |
 |---|---|---|
-| `SUPABASE_URL` | ya | alamat proyek |
-| `SUPABASE_SERVICE_ROLE_KEY` | ya | akses database dari Edge Function (jangan pernah masuk aplikasi) |
+| `SUPABASE_URL` | otomatis | alamat proyek (platform sudah menyediakan) |
+| `SUPABASE_SERVICE_ROLE_KEY` | otomatis | akses database dari Edge Function; proyek berkunci baru memakai `SUPABASE_SECRET_KEYS` / `SUPABASE_SECRET_KEY` (keduanya dikenali kode ini) |
 | `FIREBASE_PROJECT_ID` | ya | verifikasi ID token Firebase |
 | `FIREBASE_SERVICE_ACCOUNT` | untuk FCM | JSON service account → kirim push |
 | `NOTIFY_WEBHOOK_SECRET` | dianjurkan | kunci pemanggil webhook notifikasi |
@@ -380,7 +417,7 @@ select pg_reload_conf();
 | Parameter | Nilai | Arti |
 |---|---|---|
 | `SUPABASE_URL` | `https://<ref>.supabase.co` | alamat proyek |
-| `SUPABASE_ANON_KEY` | `eyJ…` | kunci publik (aman di aplikasi) |
+| `SUPABASE_ANON_KEY` | `sb_publishable_…` (baru) atau `eyJ…` (anon lama) | kunci publik — aman di aplikasi |
 | `CATALOG_SOURCE` | `local` (bawaan) / `supabase` | asal data rute, jadwal, harga |
 | `BOOKING_WRITE` | `dual` (bawaan) / `supabase` / `firestore` | kemana pesanan ditulis |
 | `PAYMENTS_ENABLED` | `false` (bawaan) / `true` | menu “Bayar Sekarang” |
@@ -396,6 +433,8 @@ flutter build apk --release \
   --dart-define=BOOKING_WRITE=dual
 ```
 
+Nama `--dart-define=SUPABASE_PUBLISHABLE_KEY=…` juga diterima (nilai yang sama).
+
 Urutan yang disarankan: `CATALOG_SOURCE=supabase` dulu (resiko kecil) →
 `BOOKING_WRITE=dual` → setelah tenang → `BOOKING_WRITE=supabase`.
 
@@ -410,7 +449,7 @@ python3 -m venv /tmp/venv
 /tmp/venv/bin/pip install pgserver "psycopg[binary]"   # sekali saja
 /tmp/venv/bin/python tools/db_check.py   # migrasi + 17 kelompok uji database + kecocokan RPC
 node tools/ts_check.js                   # impor relatif + nama ekspor Edge Function
-node tools/e2e/run_e2e.mts               # Edge Function DIJALANKAN (17 skenario)
+node tools/e2e/run_e2e.mts               # Edge Function DIJALANKAN (18 skenario)
 ```
 
 `tools/e2e/run_e2e.mts` menjalankan berkas `supabase/functions/*/index.ts` yang
@@ -429,7 +468,8 @@ Yang diperiksa: katalog publik, sinkronisasi pengguna + perangkat, pemesanan
 (harga & kursi dihitung server, idempotensi, kursi habis), riwayat & pembatalan,
 tagihan Midtrans + webhook bertanda tangan, verifikasi transfer manual oleh
 staf, notifikasi FCM (termasuk token basi), tautan unggah/unduh Storage,
-impor admin, dan batas peran pelanggan vs staf.
+impor admin, batas peran pelanggan vs staf, serta penerimaan kunci Supabase
+model lama (`service_role`) maupun baru (`sb_secret_…`).
 
 Harness ini sudah menemukan dan memperbaiki beberapa kesalahan yang tidak
 terlihat dari pembacaan kode, mis. variabel `gross_amount` yang tidak ada di

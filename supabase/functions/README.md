@@ -208,8 +208,8 @@ Sebelum `supabase functions deploy`, jalankan dari akar repositori:
 ```bash
 /tmp/venv/bin/python tools/db_check.py   # migrasi + uji perilaku database + kecocokan RPC
 node tools/ts_check.js                   # impor & nama ekspor antarberkas
-node tools/e2e/run_e2e.mts               # fungsi BENAR-BENAR dijalankan (17 skenario)
-E2E_FUNCTIONS_DIR=supabase/deploy-dashboard node tools/e2e/run_e2e.mts   # 17 skenario pada berkas siap tempel
+node tools/e2e/run_e2e.mts               # fungsi BENAR-BENAR dijalankan (18 skenario)
+E2E_FUNCTIONS_DIR=supabase/deploy-dashboard node tools/e2e/run_e2e.mts   # 18 skenario pada berkas siap tempel
 ```
 
 `tools/e2e/run_e2e.mts` menjalankan berkas `index.ts` yang sama di dalam Node 22

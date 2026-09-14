@@ -157,9 +157,9 @@ langkah_1() {
 
   [ -n "$SUPABASE_URL" ] || info "SUPABASE_URL kosong → akan diisi otomatis dari project ref"
   if [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; then
-    ok "service_role key: terisi"
+    ok "kunci server (service_role/secret): terisi"
   else
-    kuning "  ! SUPABASE_SERVICE_ROLE_KEY kosong → coba diambil lewat CLI (langkah 5)"
+    info "kunci server belum ada → akan dicoba diambil lewat CLI; bila gagal, Edge Function tetap jalan karena platform Supabase menyediakannya otomatis"
   fi
 }
 
@@ -271,12 +271,13 @@ if isinstance(data, dict):
     data = data.get("data") or [data]
 for item in data:
     nama = str(item.get("name") or item.get("id") or "").lower()
-    nilai = item.get("api_key") or item.get("key") or ""
+    nilai = item.get("api_key") or item.get("key") or item.get("secret") or item.get("value") or ""
     if not nilai:
         continue
-    if nama in ("service_role", "secret"):
+    # Nama kunci lama: anon / service_role. Model baru: publishable / secret.
+    if "service" in nama or "secret" in nama:
         print("SERVICE=" + nilai)
-    elif nama == "anon":
+    elif "anon" in nama or "publishable" in nama or "public" in nama:
         print("ANON=" + nilai)
 ' 2>/dev/null)"
   while IFS= read -r baris; do
@@ -303,6 +304,7 @@ langkah_5() {
     ok "NOTIFY_WEBHOOK_SECRET dibuat & disimpan di $ENV_FILE"
   fi
 
+  info "SUPABASE_URL & kunci server biasanya sudah otomatis di Edge Function — mengisinya di sini hanya untuk kejelasan."
   if [ -n "$SUPABASE_SERVICE_ROLE_KEY" ] && [ -n "$SUPABASE_ANON_KEY" ]; then
     ok "kunci API anon & service_role terisi dari $ENV_FILE"
   elif ambil_api_keys; then

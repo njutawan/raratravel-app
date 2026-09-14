@@ -269,7 +269,14 @@ async function uji(nama: string, fn: () => Promise<void>): Promise<void> {
     catatan.push({ nama, ok: true });
     console.log(`  OK   ${nama}`);
   } catch (err) {
-    const pesan = err instanceof Error ? err.message : String(err);
+    // E2E_DEBUG=1 → tampilkan 3 baris pertama stack untuk melacak asal galat.
+    const pesan = err instanceof Error
+      ? `${err.message}${
+        process.env.E2E_DEBUG
+          ? `\n        ${(err.stack ?? "").split("\n").slice(1, 4).join("\n        ")}`
+          : ""
+      }`
+      : String(err);
     catatan.push({ nama, ok: false, pesan });
     console.log(`  GAGAL ${nama}\n        ${pesan}`);
   }
@@ -692,6 +699,57 @@ async function jalankanSkenario(): Promise<void> {
     tegas(daftar.json.total === 0, "tidak boleh melihat pesanan orang lain", daftar.json);
     const detail = await panggil("manage-booking", { token: tokenLain, body: { action: "detail", kode } });
     tegas(detail.status === 404, "detail pesanan orang lain harus 404", detail);
+  });
+
+  await uji("Kunci Supabase model baru (sb_secret_ / sb_publishable_) diterima", async () => {
+    // Proyek Supabase baru hanya menyediakan kunci model baru: kunci server
+    // datang sebagai kamus JSON SUPABASE_SECRET_KEYS (tanpa service_role lama).
+    const lama_ = {
+      serviceRole: process.env.SUPABASE_SERVICE_ROLE_KEY,
+      secretKey: process.env.SUPABASE_SECRET_KEY,
+      secretKeys: process.env.SUPABASE_SECRET_KEYS,
+    };
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    delete process.env.SUPABASE_SECRET_KEY;
+    try {
+      // 1) hanya SUPABASE_SECRET_KEYS (bentuk asli dari platform)
+      process.env.SUPABASE_SECRET_KEYS = JSON.stringify({
+        default: "sb_secret_kunci-uji-model-baru",
+        cadangan: "sb_secret_kunci-uji-cadangan",
+      });
+      const katalog = await panggil("search-routes", { query: { action: "cities" } });
+      tegas(katalog.status === 200, "katalog tetap jalan hanya dengan SUPABASE_SECRET_KEYS", katalog);
+
+      // 2) kamus tanpa kunci "default" → pakai nilai pertama yang ada
+      process.env.SUPABASE_SECRET_KEYS = JSON.stringify({ utama: "sb_secret_kunci-uji-utama" });
+      const katalog2 = await panggil("search-routes", { query: { action: "cities" } });
+      tegas(katalog2.status === 200, "kamus tanpa 'default' tetap terbaca", katalog2);
+
+      // 3) SUPABASE_SECRET_KEY tunggal juga diterima
+      delete process.env.SUPABASE_SECRET_KEYS;
+      process.env.SUPABASE_SECRET_KEY = "sb_secret_kunci-uji-tunggal";
+      const katalog3 = await panggil("search-routes", { query: { action: "cities" } });
+      tegas(katalog3.status === 200, "SUPABASE_SECRET_KEY tunggal diterima", katalog3);
+
+      // 4) tidak ada kunci sama sekali → galat konfigurasi yang jelas (500),
+      //    bukan gagal senyap
+      delete process.env.SUPABASE_SECRET_KEY;
+      const kosong = await panggil("search-routes", { query: { action: "cities" } });
+      tegas(kosong.status === 500, "tanpa kunci server → 500", kosong);
+      const pesan = JSON.stringify(kosong.json);
+      tegas(
+        pesan.includes("SUPABASE_SECRET_KEYS") || pesan.includes("SUPABASE_SERVICE_ROLE_KEY"),
+        "pesan galat menyebut nama secret yang harus diisi",
+        kosong.json,
+      );
+    } finally {
+      if (lama_.serviceRole === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+      else process.env.SUPABASE_SERVICE_ROLE_KEY = lama_.serviceRole;
+      if (lama_.secretKey === undefined) delete process.env.SUPABASE_SECRET_KEY;
+      else process.env.SUPABASE_SECRET_KEY = lama_.secretKey;
+      if (lama_.secretKeys === undefined) delete process.env.SUPABASE_SECRET_KEYS;
+      else process.env.SUPABASE_SECRET_KEYS = lama_.secretKeys;
+    }
   });
 }
 

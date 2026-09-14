@@ -23,10 +23,28 @@ function optional(name) {
   const value = Deno.env.get(name);
   return value && value.trim() !== "" ? value.trim() : void 0;
 }
+function serviceRoleKey() {
+  const langsung = optional("SUPABASE_SERVICE_ROLE_KEY") ?? optional("SUPABASE_SECRET_KEY");
+  if (langsung) return langsung;
+  const kamus = optional("SUPABASE_SECRET_KEYS");
+  if (kamus) {
+    try {
+      const data = JSON.parse(kamus);
+      const nilai = data.default ?? Object.values(data)[0];
+      if (typeof nilai === "string" && nilai.trim()) return nilai.trim();
+    } catch {
+    }
+  }
+  throw new Error(
+    "Konfigurasi kunci server Supabase belum ada. Isi SUPABASE_SERVICE_ROLE_KEY (kunci lama) atau sediakan SUPABASE_SECRET_KEYS / SUPABASE_SECRET_KEY (kunci model baru `sb_secret_…`)."
+  );
+}
 function env() {
   return {
     supabaseUrl: required("SUPABASE_URL"),
-    serviceRoleKey: required("SUPABASE_SERVICE_ROLE_KEY"),
+    get serviceRoleKey() {
+      return serviceRoleKey();
+    },
     firebaseProjectId: required("FIREBASE_PROJECT_ID"),
     firebaseServiceAccount: optional("FIREBASE_SERVICE_ACCOUNT"),
     notifyWebhookSecret: optional("NOTIFY_WEBHOOK_SECRET"),
@@ -41,10 +59,10 @@ function env() {
 
 // supabase/functions/_shared/db.ts
 function headers(extra = {}) {
-  const { serviceRoleKey } = env();
+  const { serviceRoleKey: serviceRoleKey2 } = env();
   return {
-    apikey: serviceRoleKey,
-    Authorization: `Bearer ${serviceRoleKey}`,
+    apikey: serviceRoleKey2,
+    Authorization: `Bearer ${serviceRoleKey2}`,
     "Content-Type": "application/json",
     ...extra
   };

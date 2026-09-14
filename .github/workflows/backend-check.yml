@@ -10,9 +10,9 @@ name: Backend check
 #   * kecocokan nama + parameter RPC dengan tanda tangan fungsi di database
 #   * impor relatif & nama ekspor Edge Function (tools/ts_check.js)
 #   * sintaks seluruh berkas TypeScript (esbuild)
-#   * 17 skenario end-to-end: Edge Function dijalankan sungguhan (tools/e2e)
+#   * 18 skenario end-to-end: Edge Function dijalankan sungguhan (tools/e2e)
 #   * berkas siap-tempel Dashboard (supabase/deploy-dashboard) tidak basi,
-#     dan bundelnya menjalani 17 skenario yang sama
+#     dan bundelnya menjalani 18 skenario yang sama
 
 on:
   push:
