@@ -31,10 +31,31 @@ interface JwtPayload {
   firebase?: { sign_in_provider?: string };
 }
 
-const CERT_URL =
-  "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com";
+/**
+ * Kunci publik Google dalam bentuk JWK (bukan sertifikat x509).
+ *
+ * Penting: `crypto.subtle.importKey("spki", …)` TIDAK bisa membaca sertifikat
+ * x509 (struktur DER-nya berbeda) — kesalahan itu membuat SELURUH endpoint
+ * yang butuh login gagal dengan 500. Endpoint JWK di bawah mengembalikan
+ * modulus/eksponen (n, e) yang langsung dapat diimpor WebCrypto.
+ */
+const JWK_URL =
+  "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 
-let certCache: { fetchedAt: number; ttlMs: number; certs: Record<string, string> } | null = null;
+interface GoogleJwk {
+  kid: string;
+  kty: string;
+  n: string;
+  e: string;
+  alg?: string;
+  use?: string;
+}
+
+let keyCache: {
+  fetchedAt: number;
+  ttlMs: number;
+  keys: Record<string, GoogleJwk>;
+} | null = null;
 
 function base64UrlToBytes(value: string): Uint8Array {
   const padded = value.replace(/-/g, "+").replace(/_/g, "/");
@@ -45,26 +66,15 @@ function base64UrlToBytes(value: string): Uint8Array {
   return bytes;
 }
 
-function pemToBytes(pem: string): Uint8Array {
-  const body = pem
-    .replace(/-----BEGIN CERTIFICATE-----/, "")
-    .replace(/-----END CERTIFICATE-----/, "")
-    .replace(/\s/g, "");
-  const binary = atob(body);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
-
-async function certificates(): Promise<Record<string, string>> {
+async function publicKeys(): Promise<Record<string, GoogleJwk>> {
   const now = Date.now();
-  if (certCache && now - certCache.fetchedAt < certCache.ttlMs) {
-    return certCache.certs;
+  if (keyCache && now - keyCache.fetchedAt < keyCache.ttlMs) {
+    return keyCache.keys;
   }
 
-  const response = await fetch(CERT_URL);
+  const response = await fetch(JWK_URL);
   if (!response.ok) {
-    throw Object.assign(new Error("Tidak bisa mengambil sertifikat Firebase"), {
+    throw Object.assign(new Error("Tidak bisa mengambil kunci publik Firebase"), {
       status: 503,
       code: "service_unavailable",
     });
@@ -72,10 +82,14 @@ async function certificates(): Promise<Record<string, string>> {
 
   const cacheControl = response.headers.get("cache-control") ?? "";
   const maxAge = Number(cacheControl.match(/max-age=(\d+)/)?.[1] ?? 3600);
-  const certs = (await response.json()) as Record<string, string>;
+  const body = (await response.json()) as { keys?: GoogleJwk[] };
+  const keys: Record<string, GoogleJwk> = {};
+  for (const key of body.keys ?? []) {
+    if (key?.kid && key.kty === "RSA" && key.n && key.e) keys[key.kid] = key;
+  }
 
-  certCache = { fetchedAt: now, ttlMs: Math.max(maxAge - 60, 60) * 1000, certs };
-  return certs;
+  keyCache = { fetchedAt: now, ttlMs: Math.max(maxAge - 60, 60) * 1000, keys };
+  return keys;
 }
 
 /** Lempar error bergaya API bila token tidak sah/kedaluwarsa. */
@@ -91,11 +105,23 @@ export async function verifyFirebaseToken(idToken: string): Promise<FirebaseUser
   }
 
   const [headerPart, payloadPart, signaturePart] = parts;
-  const header = JSON.parse(new TextDecoder().decode(base64UrlToBytes(headerPart))) as {
-    alg?: string;
-    kid?: string;
-  };
-  const payload = JSON.parse(new TextDecoder().decode(base64UrlToBytes(payloadPart))) as JwtPayload;
+
+  // Token yang rusak (base64 tidak sah, JSON tidak lengkap) harus dijawab 401,
+  // bukan 500 — jangan sampai kegagalan decode terlihat seperti kesalahan server.
+  let header: { alg?: string; kid?: string };
+  let payload: JwtPayload;
+  try {
+    header = JSON.parse(new TextDecoder().decode(base64UrlToBytes(headerPart))) as {
+      alg?: string;
+      kid?: string;
+    };
+    payload = JSON.parse(new TextDecoder().decode(base64UrlToBytes(payloadPart))) as JwtPayload;
+  } catch {
+    throw Object.assign(new Error("Token login tidak dapat dibaca"), {
+      status: 401,
+      code: "unauthorized",
+    });
+  }
 
   if (header.alg !== "RS256" || !header.kid) {
     throw Object.assign(new Error("Algoritma token tidak didukung"), {
@@ -104,26 +130,35 @@ export async function verifyFirebaseToken(idToken: string): Promise<FirebaseUser
     });
   }
 
-  const certs = await certificates();
-  const pem = certs[header.kid];
-  if (!pem) {
-    // Sertifikat berputar: paksa ambil ulang pada permintaan berikutnya.
-    certCache = null;
-    throw Object.assign(new Error("Sertifikat token tidak dikenal"), {
+  const keys = await publicKeys();
+  const jwk = keys[header.kid];
+  if (!jwk) {
+    // Kunci berputar: paksa ambil ulang pada permintaan berikutnya.
+    keyCache = null;
+    throw Object.assign(new Error("Kunci token tidak dikenal"), {
       status: 401,
       code: "unauthorized",
     });
   }
 
   const key = await crypto.subtle.importKey(
-    "spki",
-    pemToBytes(pem).buffer as ArrayBuffer,
+    "jwk",
+    { kty: jwk.kty, n: jwk.n, e: jwk.e, alg: "RS256", ext: true },
     { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
     false,
     ["verify"],
   );
 
-  const signature = base64UrlToBytes(signaturePart);
+  let signature: Uint8Array;
+  try {
+    signature = base64UrlToBytes(signaturePart);
+  } catch {
+    throw Object.assign(new Error("Tanda tangan token tidak dapat dibaca"), {
+      status: 401,
+      code: "unauthorized",
+    });
+  }
+
   const valid = await crypto.subtle.verify(
     { name: "RSASSA-PKCS1-v1_5" },
     key,

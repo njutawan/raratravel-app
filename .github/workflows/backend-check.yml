@@ -10,6 +10,7 @@ name: Backend check
 #   * kecocokan nama + parameter RPC dengan tanda tangan fungsi di database
 #   * impor relatif & nama ekspor Edge Function (tools/ts_check.js)
 #   * sintaks seluruh berkas TypeScript (esbuild)
+#   * 17 skenario end-to-end: Edge Function dijalankan sungguhan (tools/e2e)
 
 on:
   push:
@@ -38,7 +39,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # Node 22 diperlukan: menjalankan berkas .ts langsung (type stripping).
+          node-version: "22"
 
       - name: Pasang pgserver (PostgreSQL 16 lokal)
         run: |
@@ -50,6 +52,9 @@ jobs:
 
       - name: Impor & nama ekspor Edge Function
         run: node tools/ts_check.js
+
+      - name: End-to-end Edge Function (PostgreSQL tiruan Supabase)
+        run: node tools/e2e/run_e2e.mts
 
       - name: Sintaks TypeScript (esbuild)
         run: |

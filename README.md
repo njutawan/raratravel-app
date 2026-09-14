@@ -105,7 +105,14 @@ Uji backend tanpa Docker/Supabase CLI (butuh Python 3 + `pgserver`):
 python3 -m venv /tmp/venv && /tmp/venv/bin/pip install pgserver   # sekali saja
 /tmp/venv/bin/python tools/db_check.py      # migrasi + 17 kelompok uji + kecocokan RPC
 node tools/ts_check.js                      # impor & nama ekspor Edge Function
+node tools/e2e/run_e2e.mts                  # Edge Function benar-benar dijalankan
 ```
+
+`run_e2e.mts` menjalankan kesepuluh Edge Function di atas PostgreSQL 16 asli
+(tiruan PostgREST + Storage) dengan token Firebase, FCM, dan Snap yang ditiru —
+17 skenario: katalog, login, perangkat, pemesanan (harga/kursi/idempotensi),
+pembayaran manual & webhook Midtrans, notifikasi FCM, unggah berkas, impor
+admin, hingga pemeriksaan batas peran.
 
 ### 1. Installalat (sekali saja)
 

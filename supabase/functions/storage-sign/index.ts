@@ -32,12 +32,18 @@ interface StoragePayload {
   expires_in?: number;
 }
 
-/** Bucket & awalan folder per jenis berkas. */
-const RULES: Record<string, { bucket: string; prefix: string; public: boolean }> = {
-  route: { bucket: "public-assets", prefix: "routes", public: true },
-  tour: { bucket: "public-assets", prefix: "tours", public: true },
-  rental: { bucket: "public-assets", prefix: "rentals", public: true },
-  vehicle: { bucket: "public-assets", prefix: "vehicles", public: true },
+/**
+ * Bucket & awalan folder per jenis berkas.
+ *
+ * `staff: true` → hanya staf yang boleh mengunggah (gambar katalog tampil
+ * untuk semua pengguna, jadi jangan sampai bisa diisi siapa saja). Pelanggan
+ * hanya perlu `avatar` dan `payment_proof`.
+ */
+const RULES: Record<string, { bucket: string; prefix: string; public: boolean; staff?: boolean }> = {
+  route: { bucket: "public-assets", prefix: "routes", public: true, staff: true },
+  tour: { bucket: "public-assets", prefix: "tours", public: true, staff: true },
+  rental: { bucket: "public-assets", prefix: "rentals", public: true, staff: true },
+  vehicle: { bucket: "public-assets", prefix: "vehicles", public: true, staff: true },
   avatar: { bucket: "avatars", prefix: "users", public: true },
   payment_proof: { bucket: "payment-proofs", prefix: "bookings", public: false },
   other: { bucket: "public-assets", prefix: "misc", public: true },
@@ -62,6 +68,20 @@ Deno.serve(async (req: Request) => {
       userId = synced.user.id;
     }
 
+    // Gambar katalog hanya boleh diunggah staf (diperiksa di database).
+    if (rule.staff) {
+      const role = await rpc<string | null>("staff_role", { p_user_id: userId });
+      if (!role) {
+        return errorResponse(
+          "forbidden",
+          "Unggahan gambar katalog hanya untuk staf",
+          403,
+          { kind },
+          origin,
+        );
+      }
+    }
+
     if (action === "public-url") {
       const path = body.path ?? "";
       if (!path) return errorResponse("validation_error", "path wajib diisi", 400, undefined, origin);
@@ -69,19 +89,25 @@ Deno.serve(async (req: Request) => {
     }
 
     // Bukti transfer harus terkait pesanan milik pemanggil.
+    //   upload-url   → wajib memakai kode pesanan (pesanan diverifikasi di sini)
+    //   download-url → boleh hanya dengan path; kepemilikan diperiksa dari
+    //                  catatan berkas (media_assets), karena aplikasi sering
+    //                  hanya menyimpan path setelah unggahan berhasil.
     let bookingId: string | null = null;
     if (kind === "payment_proof") {
-      if (!body.kode) {
+      if (!body.kode && action !== "download-url") {
         return errorResponse("validation_error", "kode pesanan wajib diisi untuk bukti transfer", 400, undefined, origin);
       }
-      const booking = await rpc<{ id: string } | null>("find_booking", {
-        p_user_id: userId,
-        p_kode: body.kode,
-      });
-      if (!booking) {
-        return errorResponse("not_found", "Pesanan tidak ditemukan", 404, undefined, origin);
+      if (body.kode) {
+        const booking = await rpc<{ id: string } | null>("find_booking", {
+          p_user_id: userId,
+          p_kode: body.kode,
+        });
+        if (!booking) {
+          return errorResponse("not_found", "Pesanan tidak ditemukan", 404, undefined, origin);
+        }
+        bookingId = booking.id;
       }
-      bookingId = booking.id;
     }
 
     const path = sanitize(body.path ?? defaultPath(kind, userId, body));
@@ -91,7 +117,10 @@ Deno.serve(async (req: Request) => {
         p_path: path,
         p_user_id: userId,
       });
-      if (asset && asset.allowed === false) {
+      if (!asset) {
+        return errorResponse("not_found", "Berkas tidak terdaftar", 404, undefined, origin);
+      }
+      if (asset.allowed === false) {
         return errorResponse("forbidden", "Tidak berhak mengunduh berkas ini", 403, undefined, origin);
       }
       const bucket = asset?.bucket ?? rule.bucket;

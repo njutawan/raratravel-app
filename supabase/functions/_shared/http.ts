@@ -93,7 +93,10 @@ export function handleError(error: unknown, origin?: string | null): Response {
   }
 
   const message = err?.message ?? "Terjadi kesalahan di server";
-  const status = err?.status ?? mapped?.status ?? 500;
+  // PostgREST selalu membalas 400 untuk galat database; kode SQLSTATE kita
+  // (RA002 harga berubah, RA003 kursi habis, RA006 tanpa akses, …) menang
+  // supaya aplikasi menerima status yang benar (409/404/403).
+  const status = mapped?.status ?? err?.status ?? 500;
   const cleanMessage = message.replace(/^[A-Z_]+[0-9]*:\s*/, "");
 
   console.error("[api-error]", { sqlstate, appCode, message, details });

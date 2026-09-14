@@ -65,12 +65,15 @@ async function process(req: Request, provider: string, original: Request): Promi
       provider: parsed.provider,
       eventId: parsed.eventId,
     });
-    return errorResponse(
-      "invalid_signature",
-      "Tanda tangan webhook tidak sah",
-      401,
-      { provider: parsed.provider, event_id: parsed.eventId },
-    );
+    // Dibalas 200 (bukan 401) supaya provider tidak mengirim ulang terus-menerus;
+    // tidak ada perubahan data karena `apply_payment_event` menolak menerapkan
+    // kejadian dengan tanda tangan tidak sah.
+    return json({
+      ok: false,
+      provider: parsed.provider,
+      reason: "invalid_signature",
+      event_id: parsed.eventId,
+    });
   }
 
   if (!parsed.eventId) {

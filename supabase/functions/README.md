@@ -123,7 +123,10 @@ Lainnya  : ….supabase.co/functions/v1/payment-webhook?provider=hmac   (header 
 ```
 
 Webhook **selalu** membalas HTTP 200 + JSON supaya provider tidak mengirim
-ulang tanpa henti; kegagalan tercatat pada tabel `payments.raw`.
+ulang tanpa henti — termasuk saat tanda tangan tidak sah (`ok:false`,
+`reason:invalid_signature`; tidak ada data yang berubah karena
+`apply_payment_event` menolak kejadian tanpa tanda tangan yang sah).
+Kegagalan tercatat pada tabel `payment_events`.
 
 ### Notifikasi
 
@@ -155,8 +158,11 @@ curl -X POST "$REF/functions/v1/storage-sign" -H "apikey: $ANON" -H "Authorizati
 ```
 
 `kind`: `route|tour|rental|vehicle|avatar|payment_proof|other`.
-Bukti transfer hanya bisa diunggah untuk pesanan milik pemanggil; tipe berkas
-dibatasi (jpg/png/webp) dan ukuran 2 MB (avatar) / 5 MB (lainnya).
+Bukti transfer hanya bisa diunggah untuk pesanan milik pemanggil; gambar
+katalog (`route|tour|rental|vehicle`) hanya untuk staf; tipe berkas dibatasi
+(jpg/png/webp) dan ukuran 2 MB (avatar) / 5 MB (lainnya).
+Bukti transfer bisa diunduh dengan `path` saja — kepemilikan diperiksa dari
+catatan berkas, jadi aplikasi tidak wajib mengirim `kode` lagi.
 
 ### Admin
 
@@ -186,6 +192,24 @@ _shared/payments.ts   → tanda tangan Midtrans/Xendit/HMAC + Midtrans Snap
 Perubahan skema mengikuti berkas `supabase/migrations/*.sql`; uji lokalnya
 `tools/db_smoke_test.sql` (`SEMUA OK (11 migrasi)` = seluruh migrasi + 17
 kelompok uji lulus).
+
+## Uji lokal (tanpa Deno)
+
+Sebelum `supabase functions deploy`, jalankan dari akar repositori:
+
+```bash
+/tmp/venv/bin/python tools/db_check.py   # migrasi + uji perilaku database + kecocokan RPC
+node tools/ts_check.js                   # impor & nama ekspor antarberkas
+node tools/e2e/run_e2e.mts               # fungsi BENAR-BENAR dijalankan (17 skenario)
+```
+
+`tools/e2e/run_e2e.mts` menjalankan berkas `index.ts` yang sama di dalam Node 22
+(dukungan TypeScript bawaan) di atas PostgreSQL 16 asli dengan tiruan
+PostgREST/Storage (`tools/e2e/pg_bridge.py`), token Firebase RS256 asli, serta
+tiruan FCM, OAuth2, dan Snap. Harness ini sudah menangkap beberapa kesalahan
+yang hanya muncul saat berjalan (variabel salah nama di webhook Midtrans,
+status HTTP yang selalu 400, alias SQL pada `record_media_asset`) — jadi
+jalankan dulu sebelum deploy.
 
 ## Catatan operasional
 

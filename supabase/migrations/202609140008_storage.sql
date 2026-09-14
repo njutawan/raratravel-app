@@ -132,12 +132,12 @@ begin
   )
   on conflict (bucket, path) do update
     set kind = excluded.kind,
-        mime_type = coalesce(excluded.mime_type, m.media_assets.mime_type),
-        file_size = coalesce(excluded.file_size, m.media_assets.file_size),
+        mime_type = coalesce(excluded.mime_type, m.mime_type),
+        file_size = coalesce(excluded.file_size, m.file_size),
         is_public = excluded.is_public,
-        owner_user_id = coalesce(excluded.owner_user_id, m.media_assets.owner_user_id),
-        booking_id = coalesce(excluded.booking_id, m.media_assets.booking_id),
-        metadata = m.media_assets.metadata || excluded.metadata
+        owner_user_id = coalesce(excluded.owner_user_id, m.owner_user_id),
+        booking_id = coalesce(excluded.booking_id, m.booking_id),
+        metadata = m.metadata || excluded.metadata
   returning * into v_asset;
 
   return jsonb_build_object(

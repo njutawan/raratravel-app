@@ -113,7 +113,7 @@ async function parseMidtrans(body: Record<string, unknown>): Promise<WebhookPars
     eventType: `midtrans.${transactionStatus}`,
     status: midtransStatusToPaymentStatus(transactionStatus, str(body.fraud_status) ?? undefined),
     providerReference: orderId || null,
-    amount: toNumber(gross_amount),
+    amount: toNumber(grossAmount),
     signatureValid,
     failureReason: str(body.status_message),
     payload: body,

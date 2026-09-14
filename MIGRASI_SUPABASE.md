@@ -150,7 +150,41 @@ Urutan yang disarankan: `CATALOG_SOURCE=supabase` dulu (resiko kecil) →
 
 ---
 
-## 6. Uji cepat setelah deploy
+## 6. Uji lokal sebelum deploy (tanpa Deno/Supabase CLI)
+
+Tiga tingkat pemeriksaan, semuanya jalan di laptop:
+
+```bash
+python3 -m venv /tmp/venv && /tmp/venv/bin/pip install pgserver   # sekali saja
+/tmp/venv/bin/python tools/db_check.py   # migrasi + 17 kelompok uji database + kecocokan RPC
+node tools/ts_check.js                   # impor relatif + nama ekspor Edge Function
+node tools/e2e/run_e2e.mts               # Edge Function DIJALANKAN (17 skenario)
+```
+
+`tools/e2e/run_e2e.mts` menjalankan berkas `supabase/functions/*/index.ts` yang
+sama dengan yang akan di-deploy di dalam Node 22 (dukungan TypeScript bawaan),
+dengan:
+
+* PostgreSQL 16 sungguhan sebagai database (tiruan PostgREST + Storage di
+  `tools/e2e/pg_bridge.py`) sehingga nama RPC, tipe argumen, dan kebijakan
+  izin diuji apa adanya;
+* token Firebase betulan (RS256) yang ditandatangani kunci buatan sendiri,
+  diverifikasi lewat JWKS tiruan — termasuk kasus token rusak, kedaluwarsa,
+  dan audience proyek lain;
+* tiruan FCM, OAuth2 Google, dan Snap Midtrans.
+
+Yang diperiksa: katalog publik, sinkronisasi pengguna + perangkat, pemesanan
+(harga & kursi dihitung server, idempotensi, kursi habis), riwayat & pembatalan,
+tagihan Midtrans + webhook bertanda tangan, verifikasi transfer manual oleh
+staf, notifikasi FCM (termasuk token basi), tautan unggah/unduh Storage,
+impor admin, dan batas peran pelanggan vs staf.
+
+Harness ini sudah menemukan dan memperbaiki beberapa kesalahan yang tidak
+terlihat dari pembacaan kode, mis. variabel `gross_amount` yang tidak ada di
+webhook Midtrans, status HTTP yang selalu 400 untuk galat database, dan
+rujukan alias SQL yang salah pada `record_media_asset`.
+
+## 7. Uji cepat setelah deploy
 
 ```bash
 REF=https://<ref>.supabase.co
@@ -193,7 +227,7 @@ Arti kode galat yang paling sering muncul:
 
 ---
 
-## 7. Memindahkan data lama
+## 8. Memindahkan data lama
 
 1. Ekspor Firestore (mis. ekstensi Firebase → BigQuery, atau
    `gcloud firestore export`).
@@ -225,7 +259,7 @@ curl -s -X POST "$REF/functions/v1/admin-import" \
 
 ---
 
-## 8. Sebelum langkah 12 (matikan tulisan Firestore)
+## 9. Sebelum langkah 12 (matikan tulisan Firestore)
 
 Jangan ubah `BOOKING_WRITE=supabase` sebelum semua poin ini terpenuhi:
 
@@ -256,7 +290,7 @@ seluruh klien sudah versi baru.
 
 ---
 
-## 9. Peta status
+## 10. Peta status
 
 | PostgreSQL | Tampilan aplikasi | Keterangan |
 |---|---|---|
@@ -278,7 +312,7 @@ Promo `RARAHEMAT`: potongan 10%, maksimal Rp50.000.
 
 ---
 
-## 10. Berkas terkait
+## 11. Berkas terkait
 
 | Berkas | Isi |
 |---|---|

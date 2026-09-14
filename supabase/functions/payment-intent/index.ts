@@ -86,17 +86,37 @@ Deno.serve(async (req: Request) => {
       }
 
       // Pesanan bisa milik pelanggan lain → pakai jalur staf.
-      const created = await rpc<CreatePaymentResult>("admin_create_payment", {
-        p_admin_user_id: userId,
-        p_kode: body.kode ?? null,
-        p_provider: "manual",
-        p_method: body.method ?? "Transfer Bank",
-        p_amount: body.amount ?? null,
-        p_provider_reference: body.reference ?? null,
-        p_checkout_url: null,
-        p_expires_at: null,
-        p_raw_response: { confirmed_by: role },
-      });
+      let created: CreatePaymentResult;
+      try {
+        created = await rpc<CreatePaymentResult>("admin_create_payment", {
+          p_admin_user_id: userId,
+          p_kode: body.kode ?? null,
+          p_provider: "manual",
+          p_method: body.method ?? "Transfer Bank",
+          p_amount: body.amount ?? null,
+          p_provider_reference: body.reference ?? null,
+          p_checkout_url: null,
+          p_expires_at: null,
+          p_raw_response: { confirmed_by: role },
+        });
+      } catch (error) {
+        // RA007 = pesanan sudah lunas/dibatalkan. Klik dua kali oleh staf
+        // (atau tagihan yang dikonfirmasi dua petugas) tidak boleh terlihat
+        // seperti kegagalan — beri tahu keadaannya.
+        const kodeGalat = (error as { code?: string })?.code;
+        if (kodeGalat === "RA007") {
+          return json(
+            {
+              ok: true,
+              already_settled: true,
+              confirmed_by: role,
+              message: "Pesanan ini sudah lunas — pembayaran sebelumnya sudah tercatat.",
+            },
+            { origin },
+          );
+        }
+        throw error;
+      }
 
       // event_id unik per tagihan+nominal → klik ganda staf tidak dobel catat.
       const eventId = `manual:${created.payment.id}:${created.payment.amount}`;
