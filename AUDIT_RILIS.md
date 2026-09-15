@@ -82,7 +82,9 @@ tanpa kerja background (baterai idle ≈ nol).
 - [ ] `google-services.json` via `flutterfire configure`; SHA-1 + SHA-256 debug
 - [ ] Auth: Phone + Google aktif + nomor uji
 - [ ] Firestore region `asia-southeast2`, publish `firestore.rules`, deploy index (§Lampiran)
-- [ ] App Check: Play Integrity + enforcement Firestore/Auth + token debug
+- [x] App Check: enforcement Firestore + Authentication aktif (15 Sep 2026)
+- [ ] App Check: aplikasi Android terdaftar provider Play Integrity (tab Apps)
+- [ ] App Check: token debug terdaftar + uji `flutter run` login/booking lolos
 - [ ] Functions: deploy, Blaze, **budget alert**, uji notif 3 kondisi
 - [ ] **Setelah upload AAB pertama: salin SHA-256 Play App Signing → Firebase**
       (kalau lupa, login Google & App Check versi Play Store RUSAK)
