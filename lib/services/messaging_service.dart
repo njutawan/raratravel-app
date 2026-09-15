@@ -1,3 +1,4 @@
+import 'dart:async' show TimeoutException;
 import 'dart:io' show Platform;
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -128,7 +129,7 @@ class MessagingService {
   static Future<void> sinkronSupabase() async {
     if (!EdgeClient.ready) return;
     try {
-      await FirebaseMessaging.instance.requestPermission();
+      await requestPermission(); // wrapper aman (timeout 15 dtk)
       final token = await FirebaseMessaging.instance.getToken();
       final hasil = await EdgeClient.invoke(
         'auth-user-sync',
@@ -156,7 +157,7 @@ class MessagingService {
   static Future<void> registerToken(String uid) async {
     try {
       final messaging = FirebaseMessaging.instance;
-      await messaging.requestPermission();
+      await requestPermission(); // wrapper aman (timeout 15 dtk)
       final token = await messaging.getToken();
       if (token == null) return;
       // Token sama seperti sebelumnya → tidak perlu menulis ulang.
@@ -173,12 +174,19 @@ class MessagingService {
   }
 
   /// Minta izin notifikasi sistem (dipakai layar primer onboarding).
-  /// Kembalikan true bila diizinkan. Aman dipanggil kapan pun.
+  /// Kembalikan true bila diizinkan. Aman dipanggil kapan pun: gagal maupun
+  /// menggantung (sebagian ROM tak mengembalikan jawaban dialog) tetap
+  /// selesai maksimal 15 detik agar alur aplikasi tidak macet.
   static Future<bool> requestPermission() async {
     try {
-      final settings = await FirebaseMessaging.instance.requestPermission();
+      final settings = await FirebaseMessaging.instance
+          .requestPermission()
+          .timeout(const Duration(seconds: 15));
       return settings.authorizationStatus == AuthorizationStatus.authorized ||
           settings.authorizationStatus == AuthorizationStatus.provisional;
+    } on TimeoutException {
+      debugPrint('FCM permission timeout 15 dtk — lanjut tanpa izin.');
+      return false;
     } catch (e) {
       debugPrint('FCM permission gagal: $e');
       return false;
