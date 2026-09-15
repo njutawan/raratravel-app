@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "132948234436",
+    "project_id": "raratravel-apk",
+    "storage_bucket": "raratravel-apk.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:132948234436:android:9959a4c5fa8a42f4fbf991",
+        "android_client_info": {
+          "package_name": "com.raratravel.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "132948234436-1g08ss0916hnmj6nntmd2fft3uk0tptu.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB3R5px0yYPiZajVIuVGixD6xWOTRV7Ego"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "132948234436-1g08ss0916hnmj6nntmd2fft3uk0tptu.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
