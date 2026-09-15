@@ -171,6 +171,18 @@ class _LoginCarouselScreenState extends State<LoginCarouselScreen>
         );
         return; // gangguan jaringan bukan percobaan brute-force
       }
+      // Salah konfigurasi server (SHA-1 belum terdaftar): pasti gagal di
+      // tiap percobaan sampai admin membetulkan — tampilkan pesan saja,
+      // jangan hitung brute-force (tombol tak ikut terkunci).
+      if (m.contains('ApiException: 10') ||
+          m.contains('DEVELOPER_ERROR') ||
+          m.contains('12500') ||
+          m.contains('SIGN_IN_FAILED')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AuthService.friendlyGoogleError(e))),
+        );
+        return;
+      }
       final st = await LoginGuard.catatGagal('google');
       if (!mounted) return;
       if (st.terkunci) {
@@ -342,6 +354,21 @@ class _LoginCarouselScreenState extends State<LoginCarouselScreen>
                             ),
                     ),
                   ),
+                  // Penanda kunci persisten (snackbar bisa terlewat): hitung mundur
+                  // ikut diperbarui tiap detik oleh _jalanGoogleKunci.
+                  if (_googleTerkunci)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        'Terlalu banyak gagal — tombol terbuka lagi dalam $_googleSisa.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.red.shade700,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
                   TextButton(
                     onPressed: _busy ? null : _metodeLain,
                     child: const Text('Metode lain'),
