@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../config/backend_config.dart';
 import '../models/app_user.dart';
@@ -69,11 +71,17 @@ class AuthService {
             onError(friendlyError(e));
           }
         },
-        verificationFailed: (e) => onError(friendlyError(e)),
+        verificationFailed: (e) {
+          // Log lengkap untuk diagnosis (logcat): kode saja tak cukup,
+          // detail server ada di message (mis. INVALID_APP_CREDENTIAL).
+          debugPrint('OTP verificationFailed: [${e.code}] ${e.message}');
+          onError(friendlyError(e));
+        },
         codeSent: (vid, token) => onCodeSent(vid, token),
         codeAutoRetrievalTimeout: (_) {},
       );
     } catch (e) {
+      debugPrint('OTP sendOtp error: $e');
       onError(friendlyError(e));
     }
   }
@@ -130,14 +138,65 @@ class AuthService {
   /// atau null bila pengguna membatalkan.
   static Future<UserCredential?> signInWithGoogle() async {
     final googleUser = await GoogleSignIn().signIn();
-    if (googleUser == null) return null;
+    if (googleUser == null) return null; // dibatalkan pengguna
     final googleAuth = await googleUser.authentication;
+    if (googleAuth.idToken == null && googleAuth.accessToken == null) {
+      // Seharusnya tak terjadi bila google-services.json benar; tanpa token
+      // Firebase pasti menolak, jadi gagalkan lebih awal dengan pesan jelas.
+      throw StateError('Token Google kosong (konfigurasi client).');
+    }
     return _auth.signInWithCredential(
       GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       ),
     );
+  }
+
+  /// True bila error login Google berarti "pengguna membatalkan"
+  /// (tombol back di pemilih akun) — jangan hitung sebagai kegagalan.
+  static bool isGoogleCancel(Object e) {
+    if (e is PlatformException && e.code == 'sign_in_canceled') return true;
+    final t = e.toString();
+    // ApiException 12501 = SIGN_IN_CANCELLED.
+    return t.contains('12501') || t.contains('sign_in_canceled');
+  }
+
+  /// Terjemahkan error login Google menjadi bahasa manusia.
+  /// Plugin google_sign_in melempar PlatformException (bukan
+  /// FirebaseAuthException), jadi dipetakan terpisah dari [friendlyError].
+  static String friendlyGoogleError(Object e) {
+    debugPrint('Google sign-in error: $e');
+    if (e is FirebaseAuthException) return friendlyError(e);
+    final text = e.toString();
+    if (e is PlatformException) {
+      if (e.code == 'network_error' ||
+          text.contains('ApiException: 7') ||
+          text.contains('NETWORK_ERROR')) {
+        return 'Tidak ada koneksi internet.';
+      }
+      // ApiException 10 = DEVELOPER_ERROR (SHA-1 belum terdaftar);
+      // 12500 = SIGN_IN_FAILED (konfigurasi OAuth salah).
+      if (text.contains('ApiException: 10') ||
+          text.contains('DEVELOPER_ERROR') ||
+          text.contains('12500') ||
+          text.contains('SIGN_IN_FAILED')) {
+        return 'Login Google gagal: SHA-1 APK belum terdaftar di Firebase. Hubungi admin.';
+      }
+      if (text.contains('ApiException: 8') ||
+          text.contains('INTERNAL_ERROR')) {
+        return 'Layanan Google Play bermasalah. Update Google Play Services lalu coba lagi.';
+      }
+      if (e.code == 'sign_in_failed') return 'Login Google gagal. Coba lagi.';
+      return 'Login Google gagal (${e.code}). Coba lagi.';
+    }
+    if (text.contains('Token Google kosong')) {
+      return 'Konfigurasi login Google belum lengkap. Hubungi admin.';
+    }
+    if (text.toLowerCase().contains('network')) {
+      return 'Tidak ada koneksi internet.';
+    }
+    return 'Login Google gagal. Coba lagi.';
   }
 
   /// Pascaproses login: profil + migrasi riwayat lokal + FCM.
@@ -260,6 +319,7 @@ class AuthService {
   /// Terjemahkan error teknis menjadi bahasa manusia.
   static String friendlyError(Object e) {
     if (e is FirebaseAuthException) {
+      debugPrint('Auth error: [${e.code}] ${e.message}');
       switch (e.code) {
         case 'invalid-phone-number':
           return 'Nomor HP tidak valid. Cek lagi ya.';
@@ -270,9 +330,30 @@ class AuthService {
         case 'session-expired':
           return 'Kode kedaluwarsa. Minta kode baru.';
         case 'app-not-authorized':
-          return 'Konfigurasi Firebase belum lengkap (SHA-1). Lihat PANDUAN_FIREBASE.md langkah 4.';
+        case 'invalid-app-credential':
+          return 'Verifikasi aplikasi gagal: SHA-1 APK belum terdaftar di Firebase. Hubungi admin.';
+        case 'operation-not-allowed':
+          return 'Login nomor HP belum diaktifkan di server. Hubungi admin.';
+        case 'captcha-check-failed':
+          return 'Verifikasi keamanan gagal. Update Google Play Services lalu coba lagi.';
+        case 'quota-exceeded':
+          return 'Kuota SMS hari ini habis. Coba lagi besok.';
         case 'network-request-failed':
           return 'Tidak ada koneksi internet.';
+        case 'unknown':
+          // 'unknown' menyembunyikan sebab asli di message server —
+          // petakan kata kuncinya agar pengguna/admin tahu tindakan berikutnya.
+          final m = (e.message ?? '').toUpperCase();
+          if (m.contains('INVALID_APP_CREDENTIAL')) {
+            return 'Verifikasi aplikasi gagal: SHA-1 APK belum terdaftar di Firebase. Hubungi admin.';
+          }
+          if (m.contains('QUOTA_EXCEEDED')) {
+            return 'Kuota SMS hari ini habis. Coba lagi besok.';
+          }
+          if (m.contains('BILLING_NOT_ENABLED')) {
+            return 'SMS butuh paket Blaze di Firebase. Hubungi admin.';
+          }
+          return 'Gagal mengirim OTP. Cek koneksi, lalu coba lagi.';
         default:
           return 'Gagal (${e.code}). Coba lagi.';
       }

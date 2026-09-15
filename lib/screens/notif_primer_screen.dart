@@ -21,15 +21,21 @@ class _NotifPrimerScreenState extends State<NotifPrimerScreen> {
 
   Future<void> _selesai({required bool setuju}) async {
     setState(() => _loading = true);
-    if (setuju) {
-      // Minta izin sistem (dialog Android 13+) bila Firebase siap.
-      if (FirebaseBootstrap.ready) {
-        await MessagingService.requestPermission();
+    try {
+      if (setuju) {
+        // Minta izin sistem (dialog Android 13+) bila Firebase siap.
+        // Wrapper-nya sudah anti-gantung (timeout 15 dtk) + anti-error.
+        if (FirebaseBootstrap.ready) {
+          await MessagingService.requestPermission();
+        }
+        await PreferencesService.setNotifPrimerDone();
+      } else {
+        // Tunda: tanya lagi 3 hari kemudian.
+        await PreferencesService.snoozeNotifPrimer();
       }
-      await PreferencesService.setNotifPrimerDone();
-    } else {
-      // Tunda: tanya lagi 3 hari kemudian.
-      await PreferencesService.snoozeNotifPrimer();
+    } catch (e) {
+      // Kegagalan apa pun di tahap ini tak boleh menghalangi lanjut.
+      debugPrint('Notif primer gagal: $e');
     }
     // Wajib login sebelum dashboard (kecuali mode offline / sudah login).
     final user = await AuthService.currentUserAsync();

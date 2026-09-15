@@ -22,6 +22,10 @@ android/key.properties
 *.keystore
 *.p12
 *.pfx
+# PENGECUALIAN: keystore debug bersama (kredensial debug publik standar,
+# sama seperti ~/.android/debug.keystore bawaan). Sengaja di-commit agar
+# SHA-1/256 stabil di semua mesin + CI → login OTP & Google bisa jalan.
+!android/debug.keystore
 
 # Python tools
 __pycache__/

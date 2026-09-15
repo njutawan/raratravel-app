@@ -165,9 +165,18 @@ flutter pub get
 
 ### 4️⃣ Daftarkan SHA-1 Android (wajib untuk OTP asli!)
 
-Tanpa ini, OTP nomor asli gagal dengan error `app-not-authorized`.
+Tanpa ini, OTP nomor asli gagal dengan error `app-not-authorized`
+atau `unknown` (INVALID_APP_CREDENTIAL).
 Nomor uji (langkah 3) tetap jalan tanpa SHA — jadi langkah ini boleh
 belakangan, tapi wajib sebelum rilis.
+
+> **Penting untuk APK buatan CI (folder `apk/`) maupun `flutter run`:**
+> semua build memakai keystore debug bersama `android/debug.keystore`,
+> jadi SHA-nya stabil dan sama di mana pun. Tempel SHA dari
+> `android/SHA_FINGERPRINTS.txt` (atau dari ringkasan workflow Build APK
+> di GitHub) — **BUKAN** SHA dari `~/.android` di komputermu, karena itu
+> key lain dan OTP akan tetap gagal. Verifikasi dengan
+> `bash tools/check_sha.sh` (atau `.\tools\check_sha.ps1` di Windows).
 
 Cara cepat:
 
@@ -327,6 +336,8 @@ Tanpa enforcement di Console, App Check belum melindungi apa pun.
 | `flutterfire: command not found` | PATH pub-cache belum diset (langkah 0). Restart terminal setelah set PATH |
 | `invalid-api-key` / app force close saat login | `google-services.json` salah project / belum `flutterfire configure`. Ulangi langkah 5 skrip |
 | `app-not-authorized` / DEVELOPER_ERROR | SHA-1 belum didaftarkan (langkah 4). Sementara pakai nomor uji |
+| `unknown` saat Kirim Kode OTP | Biasanya SHA-1 **APK yang diinstall** belum terdaftar (INVALID_APP_CREDENTIAL) — daftarkan SHA dari `android/SHA_FINGERPRINTS.txt`, bukan SHA komputermu. Kalau pesannya soal kuota, lihat baris berikut |
+| Kuota SMS habis (`quota-exceeded`) | Paket Spark hanya sedikit SMS/hari — pakai nomor uji, coba besok, atau upgrade Blaze |
 | SMS tidak datang-datang | Pakai nomor uji dulu; cek format +62; cek kuota Spark; sinyal HP |
 | Kode uji selalu salah | Nomor + kode harus **persis** seperti di Console (termasuk +62) |
 | `PERMISSION_DENIED` Firestore | Rules belum dipublish (langkah 6). Tunggu ±1 mnt setelah Publish |
@@ -335,7 +346,7 @@ Tanpa enforcement di Console, App Check belum melindungi apa pun.
 | `google-services.json is missing` | Dulu memblokir build. Sekarang plugin kondisional — build offline tetap jalan. Untuk mode cloud, selesaikan langkah 5 |
 | Stream pesanan tidak update | Cek internet; pastikan login nomor yang sama; cek Console → bookings ada datanya |
 | Login berputar terus | Biasanya jaringan emulator lambat — coba HP fisik |
-| Login Google `ApiException: 10` | SHA-1/256 belum di fingerprint, atau `google-services.json` belum diunduh ulang setelah SHA |
+| Login Google `ApiException: 10` | SHA-1 **APK yang diinstall** belum terdaftar — daftarkan SHA dari `android/SHA_FINGERPRINTS.txt`, lalu unduh ulang `google-services.json` dan build ulang |
 
 ---
 

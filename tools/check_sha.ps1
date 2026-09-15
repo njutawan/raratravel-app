@@ -152,9 +152,13 @@ Write-Host ''
 if ($GenKeystore) { New-ReleaseKeystore }
 
 # --- Debug keystore -------------------------------------------------
-Write-Host '── Debug keystore (development: flutter run / build debug) ──'
-$debugKs = Join-Path $env:USERPROFILE '.android\debug.keystore'
+Write-Host '── Debug keystore (dipakai CI + semua build lokal) ──'
+$debugKs = Join-Path $Root 'android\debug.keystore'
+if (-not (Test-Path $debugKs)) {
+    $debugKs = Join-Path $env:USERPROFILE '.android\debug.keystore'
+}
 if ((Test-Path $debugKs) -and (Find-Keytool)) {
+    Write-Host "   File: $debugKs"
     try {
         $fp = Invoke-KeytoolList $debugKs 'android' 'androiddebugkey'
         Test-Registered 'Debug' $fp
