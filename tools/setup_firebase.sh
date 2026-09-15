@@ -391,11 +391,17 @@ langkah_4() {
   return 1
 }
 
+# Generate lib/firebase_options.dart dari google-services.json (tanpa FlutterFire).
+isi_options_dari_json() {
+  command -v python3 >/dev/null 2>&1 || return 1
+  python3 "$AKAR/tools/gen_firebase_options.py" "$AKAR/android/app/google-services.json"
+}
+
 # ===========================================================================
-# 5. flutterfire configure
+# 5. flutterfire configure ATAU generate dari google-services.json
 # ===========================================================================
 langkah_5() {
-  judul "5. Menjalankan flutterfire configure"
+  judul "5. Mengisi google-services.json + firebase_options.dart"
   if json_ada && options_sudah_isi; then
     ok "google-services.json & firebase_options.dart sudah ada — dilewati"
     return 0
@@ -405,14 +411,29 @@ langkah_5() {
     options_sudah_isi || tolak "firebase_options.dart masih stub"
     return 0
   fi
+
+  # Jalur A: json sudah diunduh dari Console → generate options, selesai.
+  if json_ada; then
+    info "google-services.json ada — mengisi firebase_options.dart…"
+    if isi_options_dari_json && options_sudah_isi; then
+      ok "lib/firebase_options.dart terisi dari json"
+      return 0
+    fi
+    kuning "  ! generate options gagal — coba flutterfire bila ada"
+  fi
+
   if [ -z "$FIREBASE_PROJECT_ID" ]; then
     tolak "FIREBASE_PROJECT_ID kosong (langkah 4 dulu)"
     return 1
   fi
   if [ ${#FF[@]} -eq 0 ]; then
-    tolak "flutterfire tidak ada. Pasang Flutter SDK, lalu langkah 2."
-    info "Manual: dart pub global activate flutterfire_cli"
-    info "        flutterfire configure --project=$FIREBASE_PROJECT_ID --platforms=android --android-package-name=$PACKAGE_ANDROID --yes"
+    if json_ada; then
+      tolak "json ada tapi firebase_options.dart gagal diisi. Jalankan: python3 tools/gen_firebase_options.py"
+    else
+      tolak "belum ada google-services.json dan flutterfire tidak ada."
+      info "Unduh json: Console → Project settings → Your apps → Android → google-services.json"
+      info "Taruh di android/app/google-services.json lalu: python3 tools/gen_firebase_options.py"
+    fi
     return 1
   fi
   info "menghubungkan Android $PACKAGE_ANDROID ke $FIREBASE_PROJECT_ID…"
@@ -422,8 +443,10 @@ langkah_5() {
         --android-package-name="$PACKAGE_ANDROID" \
         --yes ); then
     json_ada && ok "android/app/google-services.json" || tolak "json masih belum ada"
+    if ! options_sudah_isi && json_ada; then
+      isi_options_dari_json || true
+    fi
     options_sudah_isi && ok "lib/firebase_options.dart terisi" || tolak "firebase_options.dart masih stub"
-    # Jaga-jaga: flutterfire kadang menambah plugin google-services duplikat.
     if grep -c 'google-services' "$AKAR/android/app/build.gradle" | grep -q '[2-9]'; then
       kuning "  ! ada baris google-services lebih dari satu di android/app/build.gradle — sisakan yang kondisional di bawah"
     fi
