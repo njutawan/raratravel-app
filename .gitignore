@@ -13,6 +13,8 @@ android/app/build/
 android/build/
 android/local.properties
 android/.cxx/
+*.aab
+apk/
 
 # RAHASIA — jangan pernah commit key rilis!
 android/key.properties
