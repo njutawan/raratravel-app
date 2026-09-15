@@ -227,11 +227,23 @@ flutter run
 
 ## 🔥 Firebase (Login OTP + Database Cloud)
 
-Aplikasi mendukung mode cloud (opsional): login OTP SMS, pesanan tersimpan
-di Firestore (koleksi `users` & `bookings`), dan siap notifikasi push.
+Aplikasi mendukung mode cloud (opsional): login OTP SMS, login Google,
+pesanan tersimpan di Firestore (koleksi `users` & `bookings`), dan siap
+notifikasi push.
+
+Kode Flutter **sudah lengkap**. Yang biasanya masih kurang: project Firebase,
+`google-services.json`, dan `lib/firebase_options.dart` (masih stub).
+
+```bash
+bash tools/setup_firebase.sh --check     # lihat apa yang kurang
+cp .env.firebase.example .env.firebase   # isi FIREBASE_PROJECT_ID
+bash tools/setup_firebase.sh             # sambungkan CLI + deploy rules
+```
+
+Windows: `.\tools\setup_firebase.ps1 -Check` lalu `.\tools\setup_firebase.ps1`.
 
 - **Belum setup?** Aplikasi tetap jalan **mode offline** (pesanan lokal + WA).
-- **Panduan klik-per-klik:** baca **`PANDUAN_FIREBASE.md`**.
+- **Panduan klik-per-klik + checklist Console:** **`PANDUAN_FIREBASE.md`**.
 
 ---
 

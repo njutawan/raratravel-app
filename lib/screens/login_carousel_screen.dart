@@ -128,7 +128,7 @@ class _LoginCarouselScreenState extends State<LoginCarouselScreen>
     if (!FirebaseBootstrap.ready) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Mode offline: selesaikan PANDUAN_FIREBASE.md dulu.'),
+          content: Text('Mode offline: jalankan tools/setup_firebase.sh dulu.'),
         ),
       );
       return;

@@ -450,7 +450,7 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Firebase belum dikonfigurasi, jadi aplikasi berjalan mode offline.\n\nIkuti PANDUAN_FIREBASE.md (langkah 1–2), lalu jalankan ulang aplikasi.',
+              'Firebase belum dikonfigurasi, jadi aplikasi berjalan mode offline.\n\nJalankan tools/setup_firebase.sh (lihat PANDUAN_FIREBASE.md), lalu buka ulang aplikasi.',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
             ),

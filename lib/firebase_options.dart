@@ -1,6 +1,6 @@
 // STUB — file ini otomatis DIGANTI saat kamu menjalankan
-// `flutterfire configure` (lihat PANDUAN_FIREBASE.md langkah 2).
-// Jangan edit manual.
+// `bash tools/setup_firebase.sh` (langkah 5) atau `flutterfire configure`.
+// Lihat PANDUAN_FIREBASE.md. Jangan edit manual.
 import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 
 /// Opsi Firebase per platform (diisi otomatis oleh FlutterFire CLI).

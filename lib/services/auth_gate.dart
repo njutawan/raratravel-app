@@ -12,7 +12,7 @@ class AuthGate {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Mode offline: selesaikan PANDUAN_FIREBASE.md agar bisa pesan.',
+              'Mode offline: jalankan tools/setup_firebase.sh (lihat PANDUAN_FIREBASE.md).',
             ),
           ),
         );
