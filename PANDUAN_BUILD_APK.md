@@ -20,6 +20,28 @@ upload ke Google Play Store. Semua perintah dijalankan dari folder
 
 ---
 
+## ⚡⚡ Cara tercepat: build di GitHub Actions (tanpa install apa pun)
+
+Repo ini punya workflow `.github/workflows/build-apk.yml`. Setiap push ke
+`master` atau branch `arena/**` (dan setiap perubahan kode Flutter) otomatis
+membangunkan APK release di server GitHub lalu:
+
+1. menaruh APK di **folder `apk/`** branch tersebut → cukup `git pull` untuk ambil;
+2. mengunggahnya sebagai **artifact** di tab *Actions* → bisa diunduh dari browser.
+
+Memicu build manual dari komputer mana saja (butuh `gh` login):
+
+```bash
+gh workflow run build-apk.yml --ref NAMA-BRANCH   # atau klik "Run workflow" di tab Actions
+gh run watch                                       # pantau proses build
+git pull                                           # ambil APK hasilnya di folder apk/
+```
+
+APK hasil cara ini ditandatangani debug key (sama seperti langkah 2 di bawah):
+siap di-install & dibagikan, tapi belum untuk Play Store.
+
+---
+
 ## 0️⃣ Prasyarat (sekali saja)
 
 ```bash

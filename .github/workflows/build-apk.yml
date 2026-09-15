@@ -1,0 +1,107 @@
+name: Build APK
+
+# Membangun APK release Rara Travel & Tour di runner GitHub (tanpa perlu
+# install Flutter/Android Studio di komputer sendiri), lalu:
+#   1. mengunggah APK sebagai artifact workflow (bisa diunduh dari tab Actions)
+#   2. men-commit APK langsung ke folder apk/ di branch yang dibangun,
+#      sehingga APK bisa diambil sekalian lewat `git pull`.
+#
+# APK release tanpa android/key.properties ditandatangani debug key:
+#   - bisa langsung di-install & dibagikan via WA/Drive (lihat PANDUAN_BUILD_APK.md)
+#   - TIDAK diterima Google Play Store (untuk itu perlu AAB + keystore rilis).
+
+on:
+  push:
+    branches:
+      - master
+      - "arena/**"
+    paths-ignore:
+      - "apk/**"          # hindari loop: commit APK oleh CI tidak memicu build ulang
+      - "**.md"
+      - "supabase/**"
+      - "tools/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write # dibutuhkan untuk commit APK ke branch
+
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: flutter build apk --release
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Cek versi toolchain
+        run: |
+          flutter --version
+          java -version
+
+      - name: flutter pub get
+        run: flutter pub get
+
+      - name: Baca versi aplikasi (pubspec.yaml)
+        id: ver
+        run: |
+          VERSION="$(grep -E '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)"
+          echo "version=${VERSION:-dev}" >> "$GITHUB_OUTPUT"
+          echo "Versi aplikasi: ${VERSION:-dev}"
+
+      - name: flutter build apk --release
+        run: flutter build apk --release
+
+      - name: Unggah APK sebagai artifact workflow
+        uses: actions/upload-artifact@v4
+        with:
+          name: RaraTravel-v${{ steps.ver.outputs.version }}-release
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Commit APK ke branch (folder apk/)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p apk
+          cp build/app/outputs/flutter-apk/app-release.apk \
+            "apk/RaraTravel-v${{ steps.ver.outputs.version }}-release.apk"
+          # -f: .gitignore sengaja mengecualikan apk/ — APK hasil CI memang
+          # ingin di-commit agar mudah diambil lewat `git pull`.
+          git add -f "apk/RaraTravel-v${{ steps.ver.outputs.version }}-release.apk"
+          if git diff --cached --quiet; then
+            echo "APK tidak berubah — tidak ada yang di-commit."
+          else
+            git commit -m "CI: APK release v${{ steps.ver.outputs.version }} (build ${{ github.run_number }})"
+            if ! git push origin "HEAD:${{ github.ref_name }}" 2>push_err.txt; then
+              echo "::error::git push gagal: $(tail -c 500 push_err.txt | tr '\n' ' ')"
+              exit 1
+            fi
+          fi
+
+      - name: Ringkasan
+        run: |
+          {
+            echo "### APK siap 📦"
+            echo ""
+            echo '- **Artifact workflow**: lihat bagian *Artifacts* di halaman run ini.'
+            echo "- **Commit ke branch**: \`apk/RaraTravel-v${{ steps.ver.outputs.version }}-release.apk\`"
+            echo ""
+            echo 'Install: kirim APK ke HP → tap → izinkan *Install unknown apps* → Install.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          ls -lh build/app/outputs/flutter-apk/
