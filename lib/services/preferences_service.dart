@@ -24,6 +24,32 @@ class PreferencesService {
     return prefs.getString(_kotaKey);
   }
 
+  // --- Preferensi dasar layar selamat datang (mata uang & bahasa) ---
+  static const _mataUangKey = 'rara_mata_uang_v1';
+  static const _bahasaKey = 'rara_bahasa_v1';
+
+  /// Simpan pilihan dari layar selamat datang.
+  static Future<void> setPreferensiDasar({
+    required String mataUang,
+    required String bahasa,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_mataUangKey, mataUang);
+    await prefs.setString(_bahasaKey, bahasa);
+  }
+
+  /// Mata uang terpilih (saat ini selalu IDR; siap multi-mata-uang nanti).
+  static Future<String> getMataUang() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_mataUangKey) ?? 'IDR';
+  }
+
+  /// Bahasa terpilih (saat ini selalu Indonesia).
+  static Future<String> getBahasa() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_bahasaKey) ?? 'id';
+  }
+
   // --- Primer notifikasi ---
   static const _notifDoneKey = 'rara_notif_primer_done_v1';
   static const _notifSnoozeKey = 'rara_notif_primer_snooze_v1';
