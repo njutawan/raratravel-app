@@ -79,7 +79,7 @@ fingerprint_openssl() {
 fingerprint() {  # pilih cara sesuai jenis file
   local ks="$1" pw="$2" alias="${3:-}"
   case "$ks" in
-    *.p12|*.pfx)
+    *.p12|*.pfx|*.keystore)
       if find_keytool >/dev/null 2>&1; then
         fingerprint_keytool "$ks" "$pw" "$alias" || fingerprint_openssl "$ks" "$pw"
       else
@@ -173,19 +173,19 @@ echo ""
 [ "$GEN" -eq 1 ] && gen_keystore
 
 # --- Debug keystore -------------------------------------------------
-echo "── Debug keystore (development: flutter run / build debug) ──"
-DEBUG_KS="${ANDROID_SDK_ROOT:-$HOME/.android}/debug.keystore"
+echo "── Debug keystore (dipakai CI + semua build lokal) ──"
+DEBUG_KS="$ROOT/android/debug.keystore"
+[ -f "$DEBUG_KS" ] || DEBUG_KS="${ANDROID_SDK_ROOT:-$HOME/.android}/debug.keystore"
 [ -f "$DEBUG_KS" ] || DEBUG_KS="$HOME/.android/debug.keystore"
-if [ -f "$DEBUG_KS" ] && find_keytool >/dev/null 2>&1; then
+if [ -f "$DEBUG_KS" ]; then
+  echo "   File: $DEBUG_KS"
   if fingerprint "$DEBUG_KS" "android" "androiddebugkey"; then
     check_registered "Debug" "$SHA1"
   else
     warn "Gagal membaca debug keystore ($DEBUG_KS)."
   fi
-elif [ ! -f "$DEBUG_KS" ]; then
-  warn "Debug keystore belum ada ($DEBUG_KS) — dibuat otomatis saat 'flutter run' pertama."
 else
-  warn "keytool tidak ditemukan — SHA debug tidak bisa dibaca (install JDK 17 / Android Studio)."
+  warn "Debug keystore tidak ditemukan (repo maupun ~/.android)."
 fi
 echo ""
 

@@ -1,0 +1,17 @@
+Rara Travel — SHA penanda tangan APK (stabil, dari android/debug.keystore)
+
+SHA-1  : 3F:40:53:C5:B6:97:80:91:FF:8E:87:BB:1E:A6:5C:7F:9A:76:50:8F
+SHA-256: 19:C3:11:FE:20:1F:0E:66:DA:CF:FF:25:2E:52:78:6C:B1:2A:67:5F:DC:75:A6:F5:A0:89:E5:57:8F:51:1C:FA
+
+Daftarkan KEDUANYA sekali saja di Firebase Console agar login OTP SMS
+dan login Google jalan di APK buatan CI maupun build lokal:
+  Project Settings → Your apps → aplikasi Android → Add fingerprint
+
+Catatan:
+- Semua build (CI + lokal, debug + release-tanpa-key.properties) memakai
+  android/debug.keystore yang sama, jadi SHA ini TIDAK berubah-ubah.
+- Setelah menambah fingerprint, unduh ulang google-services.json ke
+  android/app/google-services.json (wajib untuk login Google; OTP HP
+  biasanya langsung jalan tanpa build ulang).
+- Keystore ini kredensial debug publik (alias androiddebugkey / android).
+  AMAN di-commit. Jangan pernah commit keystore RILIS Play Store.

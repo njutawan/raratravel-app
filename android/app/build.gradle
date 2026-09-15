@@ -59,6 +59,17 @@ android {
     }
 
     signingConfigs {
+        // Keystore debug BERSAMA (di-commit, kredensial debug publik standar).
+        // Tanpa ini tiap mesin/CI membuat debug key sendiri → SHA berubah-ubah
+        // → login OTP & Google gagal. SHA stabilnya: android/SHA_FINGERPRINTS.txt.
+        // Format file PKCS12 (setara JKS untuk signing).
+        debug {
+            storeFile rootProject.file("debug.keystore")
+            storePassword "android"
+            keyAlias "androiddebugkey"
+            keyPassword "android"
+            storeType "PKCS12"
+        }
         release {
             keyAlias keystoreProperties["keyAlias"]
             keyPassword keystoreProperties["keyPassword"]
