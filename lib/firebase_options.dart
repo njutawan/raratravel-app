@@ -1,11 +1,29 @@
-// STUB — file ini otomatis DIGANTI saat kamu menjalankan
-// `bash tools/setup_firebase.sh` (langkah 5) atau `flutterfire configure`.
-// Lihat PANDUAN_FIREBASE.md. Jangan edit manual.
+// File ini dihasilkan dari android/app/google-services.json
+// (tools/gen_firebase_options.py). Jangan edit manual — generate ulang
+// jika json diganti (SHA baru / app baru).
 import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, TargetPlatform;
 
-/// Opsi Firebase per platform (diisi otomatis oleh FlutterFire CLI).
 class DefaultFirebaseOptions {
-  static FirebaseOptions get currentPlatform => throw UnsupportedError(
-    'Firebase belum dikonfigurasi. Ikuti PANDUAN_FIREBASE.md langkah 1-2.',
+  static FirebaseOptions get currentPlatform {
+    if (kIsWeb) {
+      throw UnsupportedError('Rara Travel belum dikonfigurasi untuk web.');
+    }
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+        return android;
+      default:
+        throw UnsupportedError(
+          'Rara Travel hanya dikonfigurasi untuk Android.',
+        );
+    }
+  }
+
+  static const FirebaseOptions android = FirebaseOptions(
+    apiKey: 'AIzaSyB3R5px0yYPiZajVIuVGixD6xWOTRV7Ego',
+    appId: '1:132948234436:android:9959a4c5fa8a42f4fbf991',
+    messagingSenderId: '132948234436',
+    projectId: 'raratravel-apk',
+    storageBucket: 'raratravel-apk.firebasestorage.app',
   );
 }

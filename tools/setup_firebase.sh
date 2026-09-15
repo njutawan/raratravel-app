@@ -145,7 +145,7 @@ firebase_siap_login() {
 options_sudah_isi() {
   local f="$AKAR/lib/firebase_options.dart"
   [ -f "$f" ] || return 1
-  grep -q "apiKey:" "$f" && ! grep -q "Firebase belum dikonfigurasi" "$f"
+  grep -q "apiKey:" "$f" && grep -q "static const FirebaseOptions android" "$f"
 }
 
 json_ada() { [ -f "$AKAR/android/app/google-services.json" ]; }

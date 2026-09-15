@@ -81,7 +81,7 @@ class DefaultFirebaseOptions {{
         return android;
       default:
         throw UnsupportedError(
-          'Firebase belum dikonfigurasi untuk platform $defaultTargetPlatform.',
+          'Rara Travel hanya dikonfigurasi untuk Android.',
         );
     }}
   }}
