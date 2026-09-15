@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "132948234436-n0hcoo5ab0j632n8d4o3veg5ktejehsl.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.raratravel.app",
+            "certificate_hash": "bd96a4b1ba9bad365b2f5528e8fc9af9840cfd1c"
+          }
+        },
+        {
           "client_id": "132948234436-1g08ss0916hnmj6nntmd2fft3uk0tptu.apps.googleusercontent.com",
           "client_type": 3
         }
