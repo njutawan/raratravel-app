@@ -18,6 +18,8 @@ android/.cxx/
 android/key.properties
 *.jks
 *.keystore
+*.p12
+*.pfx
 
 # Python tools
 __pycache__/
