@@ -81,12 +81,17 @@ jobs:
           mkdir -p apk
           cp build/app/outputs/flutter-apk/app-release.apk \
             "apk/RaraTravel-v${{ steps.ver.outputs.version }}-release.apk"
-          git add apk
+          # -f: .gitignore sengaja mengecualikan apk/ — APK hasil CI memang
+          # ingin di-commit agar mudah diambil lewat `git pull`.
+          git add -f "apk/RaraTravel-v${{ steps.ver.outputs.version }}-release.apk"
           if git diff --cached --quiet; then
             echo "APK tidak berubah — tidak ada yang di-commit."
           else
             git commit -m "CI: APK release v${{ steps.ver.outputs.version }} (build ${{ github.run_number }})"
-            git push origin "HEAD:${{ github.ref_name }}"
+            if ! git push origin "HEAD:${{ github.ref_name }}" 2>push_err.txt; then
+              echo "::error::git push gagal: $(tail -c 500 push_err.txt | tr '\n' ' ')"
+              exit 1
+            fi
           fi
 
       - name: Ringkasan
