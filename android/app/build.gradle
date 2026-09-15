@@ -1,7 +1,6 @@
 plugins {
     id "com.android.application"
     id "kotlin-android"
-    id "com.google.gms.google-services"
     id "dev.flutter.flutter-gradle-plugin"
 }
 
@@ -80,3 +79,11 @@ flutter {
 }
 
 dependencies {}
+
+// Plugin google-services HANYA dipasang jika json sudah ada.
+// Tanpa file itu, `flutter build` tetap jalan (mode offline + WA).
+// Setelah `flutterfire configure` / tools/setup_firebase.sh langkah 5, json
+// muncul dan plugin ini aktif otomatis di build berikutnya.
+if (file("google-services.json").exists()) {
+    apply plugin: "com.google.gms.google-services"
+}

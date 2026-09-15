@@ -1,9 +1,8 @@
 // CONTOH Cloud Functions: notifikasi status pesanan + rate limiting anti-spam.
 //
 // Cara pakai (lihat PANDUAN_FIREBASE.md langkah 8):
-//   1. firebase init functions  (di folder proyek Firebase, pilih JavaScript)
-//   2. Timpa functions/index.js hasil init dengan file ini
-//   3. npm install && firebase deploy --only functions
+//   bash tools/setup_firebase.sh --functions
+//   atau: cd functions_sample && npm install && cd .. && firebase deploy --only functions
 //
 // WAJIB setelah deploy (1 menit, sekali saja):
 //   Firebase Console → Firestore → TTL policies → aktifkan TTL untuk

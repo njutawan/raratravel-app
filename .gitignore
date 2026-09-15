@@ -32,6 +32,13 @@ supabase/.temp/
 service-account*.json
 firebase-service-account*.json
 
+# Firebase CLI lokal (tools/setup_firebase.sh)
+.env.firebase
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+ui-debug.log
+
 # OS
 .DS_Store
 Thumbs.db
