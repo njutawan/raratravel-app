@@ -1,33 +1,33 @@
 import 'package:flutter/material.dart';
-import 'preferensi_screen.dart';
+import 'notif_primer_screen.dart';
 import '../services/preferences_service.dart';
 import '../theme/app_theme.dart';
-import '../utils/constants.dart';
 
-/// Layar selamat datang saat pertama kali membuka aplikasi
-/// (ala Traveloka): banner + sapaan + preferensi + Lanjutkan.
-/// Hanya tampil sekali — statusnya disimpan di HP.
-class OnboardingScreen extends StatefulWidget {
-  const OnboardingScreen({super.key});
+/// Layar preferensi (mata uang & bahasa) ala Traveloka yang muncul
+/// SESUDAH onboarding, sebelum primer notifikasi & login.
+/// Hanya tampil sekali — lanjutannya ditandai bersama onboarding selesai.
+class PreferensiScreen extends StatefulWidget {
+  const PreferensiScreen({super.key});
 
   @override
-  State<OnboardingScreen> createState() => _OnboardingScreenState();
+  State<PreferensiScreen> createState() => _PreferensiScreenState();
 }
 
-class _OnboardingScreenState extends State<OnboardingScreen> {
-  String _kotaAsal = 'Jember';
+class _PreferensiScreenState extends State<PreferensiScreen> {
+  String _mataUang = 'IDR';
+  String _bahasa = 'id';
   bool _loading = false;
 
-  Future<void> _lanjut({required bool simpan}) async {
+  Future<void> _lanjut() async {
     setState(() => _loading = true);
-    if (simpan) {
-      await PreferencesService.setOnboardingDone(kotaAsal: _kotaAsal);
-    } else {
-      await PreferencesService.setOnboardingDone();
-    }
+    await PreferencesService.setPreferensiDasar(
+      mataUang: _mataUang,
+      bahasa: _bahasa,
+    );
+    await PreferencesService.setOnboardingDone();
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const PreferensiScreen()),
+      MaterialPageRoute(builder: (_) => const NotifPrimerScreen()),
     );
   }
 
@@ -102,46 +102,28 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
                 ),
-                const SizedBox(height: 20),
-                const _BenefitRow(
-                  icon: Icons.door_front_door_outlined,
-                  text: 'Door-to-door: dijemput & diantar sampai depan pintu',
-                ),
-                const SizedBox(height: 8),
-                const _BenefitRow(
-                  icon: Icons.notifications_active_outlined,
-                  text: 'Lacak pesanan + notifikasi status otomatis',
-                ),
-                const SizedBox(height: 8),
-                const _BenefitRow(
-                  icon: Icons.discount_outlined,
-                  text: 'Kode RARAHEMAT: hemat 10% setiap booking',
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  'Kota Keberangkatan Favorit',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 32),
+                const _PreferensiLabel(teks: 'Pilihan Mata Uang'),
                 DropdownButtonFormField<String>(
-                  initialValue: _kotaAsal,
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.my_location),
-                    hintText: 'Pilih kota asal',
-                  ),
-                  items: AppConstants.cities
-                      .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                      .toList(),
-                  onChanged: (v) => setState(() => _kotaAsal = v ?? _kotaAsal),
+                  initialValue: _mataUang,
+                  decoration: _dekorasiDropdown(),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'IDR',
+                      child: Text('IDR - Rupiah Indonesia (Rp)'),
+                    ),
+                  ],
+                  onChanged: (v) => setState(() => _mataUang = v ?? _mataUang),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  'Kolom "Dari" di pencarian akan otomatis terisi kota ini. Bisa diubah kapan pun.',
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                const SizedBox(height: 32),
+                const _PreferensiLabel(teks: 'Pilihan Bahasa'),
+                DropdownButtonFormField<String>(
+                  initialValue: _bahasa,
+                  decoration: _dekorasiDropdown(),
+                  items: const [
+                    DropdownMenuItem(value: 'id', child: Text('Indonesia')),
+                  ],
+                  onChanged: (v) => setState(() => _bahasa = v ?? _bahasa),
                 ),
               ],
             ),
@@ -156,7 +138,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton(
-                      onPressed: _loading ? null : () => _lanjut(simpan: true),
+                      onPressed: _loading ? null : _lanjut,
                       child: _loading
                           ? const SizedBox(
                               height: 20,
@@ -168,10 +150,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             )
                           : const Text('Lanjutkan'),
                     ),
-                  ),
-                  TextButton(
-                    onPressed: _loading ? null : () => _lanjut(simpan: false),
-                    child: const Text('Lewati'),
                   ),
                 ],
               ),
@@ -203,27 +181,31 @@ class _CurveClipper extends CustomClipper<Path> {
   bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
 }
 
-/// Baris manfaat onboarding (ikon + teks).
-class _BenefitRow extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  const _BenefitRow({required this.icon, required this.text});
+/// Label kecil abu-abu di atas dropdown preferensi (gaya Traveloka).
+class _PreferensiLabel extends StatelessWidget {
+  final String teks;
+  const _PreferensiLabel({required this.teks});
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: AppTheme.primary.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, size: 18, color: AppTheme.primary),
-        ),
-        const SizedBox(width: 10),
-        Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
-      ],
+    return Text(
+      teks,
+      style: TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.bold,
+        color: Colors.grey.shade600,
+      ),
     );
   }
 }
+
+/// Dropdown garis bawah tipis (tanpa kotak), seperti layar preferensi.
+InputDecoration _dekorasiDropdown() => InputDecoration(
+      contentPadding: const EdgeInsets.symmetric(vertical: 12),
+      enabledBorder: UnderlineInputBorder(
+        borderSide: BorderSide(color: Colors.grey.shade300),
+      ),
+      focusedBorder: const UnderlineInputBorder(
+        borderSide: BorderSide(color: AppTheme.primary, width: 2),
+      ),
+    );
