@@ -346,7 +346,7 @@ Tanpa enforcement di Console, App Check belum melindungi apa pun.
 | `google-services.json is missing` | Dulu memblokir build. Sekarang plugin kondisional — build offline tetap jalan. Untuk mode cloud, selesaikan langkah 5 |
 | Stream pesanan tidak update | Cek internet; pastikan login nomor yang sama; cek Console → bookings ada datanya |
 | Login berputar terus | Biasanya jaringan emulator lambat — coba HP fisik |
-| Login Google `ApiException: 10` | SHA-1/256 belum di fingerprint, atau `google-services.json` belum diunduh ulang setelah SHA |
+| Login Google `ApiException: 10` | SHA-1 **APK yang diinstall** belum terdaftar — daftarkan SHA dari `android/SHA_FINGERPRINTS.txt`, lalu unduh ulang `google-services.json` dan build ulang |
 
 ---
 

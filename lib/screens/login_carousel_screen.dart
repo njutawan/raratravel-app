@@ -160,7 +160,12 @@ class _LoginCarouselScreenState extends State<LoginCarouselScreen>
     } catch (e) {
       if (!mounted) return;
       setState(() => _busy = false);
-      if (e.toString().contains('network_error')) {
+      // Batal pilih akun (tombol back) bukan kegagalan: diam saja.
+      if (AuthService.isGoogleCancel(e)) return;
+      final m = e.toString();
+      if (m.contains('network_error') ||
+          m.contains('ApiException: 7') ||
+          m.contains('NETWORK_ERROR')) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Tidak ada koneksi internet.')),
         );
@@ -178,7 +183,9 @@ class _LoginCarouselScreenState extends State<LoginCarouselScreen>
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${AuthService.friendlyError(e)} (sisa ${st.sisa}x)'),
+          content: Text(
+            '${AuthService.friendlyGoogleError(e)} (sisa ${st.sisa}x)',
+          ),
         ),
       );
     }

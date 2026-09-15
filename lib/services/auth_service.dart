@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../config/backend_config.dart';
 import '../models/app_user.dart';
@@ -137,14 +138,65 @@ class AuthService {
   /// atau null bila pengguna membatalkan.
   static Future<UserCredential?> signInWithGoogle() async {
     final googleUser = await GoogleSignIn().signIn();
-    if (googleUser == null) return null;
+    if (googleUser == null) return null; // dibatalkan pengguna
     final googleAuth = await googleUser.authentication;
+    if (googleAuth.idToken == null && googleAuth.accessToken == null) {
+      // Seharusnya tak terjadi bila google-services.json benar; tanpa token
+      // Firebase pasti menolak, jadi gagalkan lebih awal dengan pesan jelas.
+      throw StateError('Token Google kosong (konfigurasi client).');
+    }
     return _auth.signInWithCredential(
       GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       ),
     );
+  }
+
+  /// True bila error login Google berarti "pengguna membatalkan"
+  /// (tombol back di pemilih akun) — jangan hitung sebagai kegagalan.
+  static bool isGoogleCancel(Object e) {
+    if (e is PlatformException && e.code == 'sign_in_canceled') return true;
+    final t = e.toString();
+    // ApiException 12501 = SIGN_IN_CANCELLED.
+    return t.contains('12501') || t.contains('sign_in_canceled');
+  }
+
+  /// Terjemahkan error login Google menjadi bahasa manusia.
+  /// Plugin google_sign_in melempar PlatformException (bukan
+  /// FirebaseAuthException), jadi dipetakan terpisah dari [friendlyError].
+  static String friendlyGoogleError(Object e) {
+    debugPrint('Google sign-in error: $e');
+    if (e is FirebaseAuthException) return friendlyError(e);
+    final text = e.toString();
+    if (e is PlatformException) {
+      if (e.code == 'network_error' ||
+          text.contains('ApiException: 7') ||
+          text.contains('NETWORK_ERROR')) {
+        return 'Tidak ada koneksi internet.';
+      }
+      // ApiException 10 = DEVELOPER_ERROR (SHA-1 belum terdaftar);
+      // 12500 = SIGN_IN_FAILED (konfigurasi OAuth salah).
+      if (text.contains('ApiException: 10') ||
+          text.contains('DEVELOPER_ERROR') ||
+          text.contains('12500') ||
+          text.contains('SIGN_IN_FAILED')) {
+        return 'Login Google gagal: SHA-1 APK belum terdaftar di Firebase. Hubungi admin.';
+      }
+      if (text.contains('ApiException: 8') ||
+          text.contains('INTERNAL_ERROR')) {
+        return 'Layanan Google Play bermasalah. Update Google Play Services lalu coba lagi.';
+      }
+      if (e.code == 'sign_in_failed') return 'Login Google gagal. Coba lagi.';
+      return 'Login Google gagal (${e.code}). Coba lagi.';
+    }
+    if (text.contains('Token Google kosong')) {
+      return 'Konfigurasi login Google belum lengkap. Hubungi admin.';
+    }
+    if (text.toLowerCase().contains('network')) {
+      return 'Tidak ada koneksi internet.';
+    }
+    return 'Login Google gagal. Coba lagi.';
   }
 
   /// Pascaproses login: profil + migrasi riwayat lokal + FCM.
