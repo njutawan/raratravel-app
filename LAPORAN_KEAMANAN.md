@@ -16,7 +16,7 @@ diperbaiki di kode**, 2 butuh tindakan Anda di Firebase Console / terjadwal.
 | H-1 | Rules Firestore: user bisa titip pesanan ke akun orang lain & alih kepemilikan | HIGH | ✅ Diperbaiki (`firestore.rules`) — **wajib Publish ulang, §5.1** |
 | H-2 | Tanpa fitur hapus akun (syarat wajib Play Store untuk aplikasi login) | HIGH | ✅ Diperbaiki (tombol Hapus Akun di Profil) |
 | M-1 | Backup otomatis Android aktif → data PII plaintext ikut ter-backup cloud | MEDIUM | ✅ Diperbaiki (`allowBackup=false`) |
-| M-2 | Tanpa App Check → API key Firebase bisa dipakai script luar | MEDIUM | 🟡 Sebagian: aktivasi kode ✅, **enforcement Console ⏳ §5.2** |
+| M-2 | Tanpa App Check → API key Firebase bisa dipakai script luar | MEDIUM | ✅ Diperbaiki: aktivasi kode + **enforcement Firestore & Auth dinyalakan** (§5.2) |
 | M-3 | minSdk 23: trafik HTTP polos masih diizinkan di Android 6–7 | MEDIUM | ✅ Diperbaiki (paksa HTTPS) |
 | M-4 | `firebase_auth` 5.x & `google_sign_in` 6.x tertinggal 1 major | MEDIUM | ⏳ Terjadwal (§5.4, butuh uji regresi) |
 | L-1 | Keluar tidak membersihkan sesi Google (berisiko di HP bersama) | LOW | ✅ Diperbaiki |
@@ -115,9 +115,14 @@ Firebase Console → Firestore Database → **Rules** → paste seluruh isi file
 2. Console → **App Check** → daftarkan aplikasi Android → provider **Play Integrity**.
 3. Ambil **token debug** untuk HP development: jalankan aplikasi debug, salin
    token dari logcat → App Check → tambah debug token.
+   Bantuan: `bash tools/appcheck_debug_token.sh` (atau `--watch` untuk
+   memantau logcat langsung).
 4. **Enforcement**: aktifkan untuk **Firestore** dan **Authentication**.
 5. Jalankan `flutter pub get` (dependensi baru `firebase_app_check`), uji login
    + buat pesanan di HP fisik.
+
+> Urutan penting: daftarkan token debug DULU (langkah 3) baru enforcement
+> (langkah 4) — kalau terbalik, build debug kamu sendiri ikut terblokir.
 
 ### 5.3 Formulir Data Safety Play Console (saat rilis)
 Isi sesuai fakta: data yang dikumpulkan (nama, no. HP, alamat, email opsional),

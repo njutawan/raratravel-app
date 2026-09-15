@@ -6,6 +6,7 @@ import '../config/backend_config.dart';
 import '../models/app_user.dart';
 import '../models/booking.dart';
 import '../repositories/booking_repository.dart';
+import '../utils/formatters.dart';
 import 'booking_storage.dart';
 import 'edge_client.dart';
 import 'firebase_bootstrap.dart';
@@ -193,8 +194,17 @@ class AuthService {
     try {
       final sudah = await BookingStorage.migratedCodes();
       final lokal = await BookingStorage.loadAll();
+      final hariIni = _hariIni();
       for (final booking in lokal) {
         if (sudah.contains(booking.kode)) continue;
+        // Tanggal lampau ditolak server (memang dirancang begitu) — cukup
+        // tinggal di riwayat HP. Tandai "sudah" agar tidak dicoba ulang
+        // tanpa henti tiap login.
+        final tanggal = Formatters.tryParseDate(booking.tanggal);
+        if (tanggal != null && tanggal.isBefore(hariIni)) {
+          await BookingStorage.markMigrated(booking.kode);
+          continue;
+        }
         try {
           await BookingRepository.create(
             draft: booking,
@@ -205,6 +215,12 @@ class AuthService {
         }
       }
     } catch (_) {}
+  }
+
+  /// Tengah malam hari ini (untuk membandingkan tanggal keberangkatan).
+  static DateTime _hariIni() {
+    final n = DateTime.now();
+    return DateTime(n.year, n.month, n.day);
   }
 
   /// Sinkron pesanan lokal → cloud: migrasi yang baru + outbox offline.

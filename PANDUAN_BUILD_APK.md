@@ -100,6 +100,24 @@ kamu TIDAK BISA update aplikasi di Play Store selamanya.**
 
 ### 3a. Buat keystore (kunci rilis)
 
+**Cara otomatis (disarankan)** — skrip membuat keystore + `android/key.properties`
+sekaligus, lalu mencetak SHA-1/SHA-256 yang harus didaftarkan ke Firebase &
+Play Console:
+
+```bash
+bash tools/check_sha.sh --gen-keystore        # Mac/Linux/Git Bash
+```
+```powershell
+.\tools\check_sha.ps1 -GenKeystore            # Windows PowerShell
+```
+
+Catat password yang dicetak skrip ke password manager, lalu lanjut ke
+langkah 3c (`key.properties` sudah dibuat otomatis). Cek kapan saja dengan
+`bash tools/check_sha.sh` — skrip juga memverifikasi SHA mana yang sudah
+terdaftar di `google-services.json`.
+
+**Cara manual:**
+
 **Windows (PowerShell):**
 
 ```powershell
@@ -117,6 +135,9 @@ File `upload-keystore.jks` akan muncul di folder home → **backup ke 2 tempat**
 (flashdisk + cloud).
 
 ### 3b. Daftarkan key ke proyek
+
+> Kalau kamu pakai cara otomatis di 3a, langkah ini sudah dikerjakan skrip —
+> lanjut langsung ke 3c.
 
 Salin `android/key.properties.example` menjadi `android/key.properties`,
 lalu isi:

@@ -438,19 +438,25 @@ class _SlideView extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                       child: Image.asset(
                         'assets/icon/app_logo.png',
-                        width: 40,
-                        height: 40,
-                        cacheWidth: 120,
+                        width: 38,
+                        height: 38,
+                        cacheWidth: 114,
                         fit: BoxFit.cover,
                       ),
                     ),
                     const SizedBox(width: 10),
-                    const Text(
-                      'raratravel.id',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 23,
-                        fontWeight: FontWeight.bold,
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: const Text(
+                          'Rara Travel & Tour',
+                          maxLines: 1,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                     ),
                   ],

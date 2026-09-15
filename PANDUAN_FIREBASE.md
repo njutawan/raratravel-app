@@ -175,6 +175,14 @@ Cara cepat:
 bash tools/setup_firebase.sh --sha
 ```
 
+Atau pakai skrip verifikasi (sekaligus mengecek SHA mana yang sudah terdaftar
+di `google-services.json`):
+
+```bash
+bash tools/check_sha.sh          # Mac/Linux/Git Bash
+.\tools\check_sha.ps1            # Windows PowerShell
+```
+
 Windows:
 
 ```powershell
@@ -337,6 +345,8 @@ Tanpa enforcement di Console, App Check belum melindungi apa pun.
 bash tools/setup_firebase.sh --check                 # audit berkas + CLI
 bash tools/setup_firebase.sh                         # sambungkan semuanya
 bash tools/setup_firebase.sh --sha                   # cetak SHA-1 / SHA-256
+bash tools/check_sha.sh                               # cetak + verifikasi SHA vs google-services.json
+bash tools/check_sha.sh --gen-keystore                # buat keystore rilis + key.properties
 bash tools/setup_firebase.sh --step 5                # ulang flutterfire configure
 bash tools/setup_firebase.sh --step 6                # ulang deploy rules
 bash tools/setup_firebase.sh --functions             # deploy Cloud Functions (Blaze)

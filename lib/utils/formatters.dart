@@ -36,6 +36,18 @@ class Formatters {
     return _short.format(DateTime(parsed.year, parsed.month, parsed.day));
   }
 
+  /// Parse tanggal format baru ("2026-09-12") maupun format lama
+  /// ("12 Sep 2026"). Kembalikan null bila keduanya gagal.
+  static DateTime? tryParseDate(String stored) {
+    final iso = DateTime.tryParse(stored);
+    if (iso != null) return DateTime(iso.year, iso.month, iso.day);
+    try {
+      return _short.parse(stored.trim());
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Kunci idempotency untuk permintaan pembuatan pesanan.
   ///
   /// Dikirim ke server: bila jaringan putus dan permintaan diulang, server
