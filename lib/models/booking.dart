@@ -209,8 +209,6 @@ class Booking {
 
   bool get bisaDibatalkan => BookingStatus.isActive(statusKode);
 
-  bool get sudahDibayar => PaymentStatus.isPaid(paymentStatus);
-
   /// Payload untuk Edge Function `create-booking`.
   /// Harga (client_total) hanya dikirim sebagai pembanding — server tetap
   /// menghitung ulang, dan menolak (409) bila harga sudah berubah.

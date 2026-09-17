@@ -76,36 +76,3 @@ class BookingStatus {
     return value == cancelled || value == expired;
   }
 }
-
-/// Status pembayaran pada server.
-class PaymentStatus {
-  static const unpaid = 'unpaid';
-  static const pending = 'pending';
-  static const partial = 'partial';
-  static const paid = 'paid';
-  static const failed = 'failed';
-  static const expired = 'expired';
-  static const refunded = 'refunded';
-
-  static String label(String? code) {
-    switch ((code ?? '').toLowerCase()) {
-      case paid:
-        return 'Lunas';
-      case partial:
-        return 'Dibayar Sebagian';
-      case pending:
-        return 'Menunggu Pembayaran';
-      case failed:
-        return 'Pembayaran Gagal';
-      case expired:
-        return 'Pembayaran Kedaluwarsa';
-      case refunded:
-        return 'Dana Dikembalikan';
-      case unpaid:
-      default:
-        return 'Belum Dibayar';
-    }
-  }
-
-  static bool isPaid(String? code) => (code ?? '').toLowerCase() == paid;
-}

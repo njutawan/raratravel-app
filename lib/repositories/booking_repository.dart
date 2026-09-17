@@ -144,14 +144,6 @@ class BookingRepository {
     return hasilBooking;
   }
 
-  /// Pantau pembayaran sebuah pesanan (daftar tagihan + sisa).
-  static Future<Map<String, dynamic>> paymentStatus(String kode) =>
-      EdgeClient.invoke(
-        'manage-booking',
-        body: {'action': 'payment-status', 'kode': kode},
-        auth: true,
-      );
-
   /// Stream riwayat: tampilkan riwayat HP lebih dulu, lalu data server.
   ///
   /// Server belum bisa memakai Realtime karena login memakai Firebase (bukan
