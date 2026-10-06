@@ -20,6 +20,9 @@ dependencies:
   cloud_firestore: ^5.4.0
   google_sign_in: ^6.2.0
   firebase_app_check: ^0.3.0
+  # Pelaporan crash otomatis (dipakai hanya di build rilis — lihat
+  # lib/services/firebase_bootstrap.dart). Versi 4.x = pasangan firebase_core 3.x.
+  firebase_crashlytics: ^4.3.10
   # Versi intl dikunci oleh flutter_localizations (SDK Flutter), jadi harus
   # mengikuti pin SDK — jangan diturunkan/dinaikkan sendiri.
   intl: ^0.20.2

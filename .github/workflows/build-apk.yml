@@ -298,11 +298,20 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Commit APK ke branch (folder apk/)
+      # Simpan APK ke branch (folder apk/) — HANYA versi terbaru yang disimpan,
+      # supaya riwayat git tidak menggelembung (tiap APK ±60 MB permanen).
+      # Berkas lama dihapus dari pohon kerja; salinan permanen ada di Release.
+      - name: Simpan APK terbaru ke branch (folder apk/)
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           mkdir -p apk
+          HAPUS=$(git ls-files apk)
+          if [ -n "$HAPUS" ]; then
+            echo "Menghapus APK lama dari pohon kerja (salinan ada di Release):"
+            printf '%s\n' "$HAPUS"
+            git rm -q --ignore-unmatch $HAPUS
+          fi
           cp build/app/outputs/flutter-apk/app-release.apk \
             "apk/RaraTravel-v${{ steps.ver.outputs.version }}-release.apk"
           # -f: .gitignore sengaja mengecualikan apk/ — APK hasil CI memang
@@ -326,13 +335,45 @@ jobs:
             fi
           fi
 
+      # Salinan permanen tiap build → GitHub Releases (tidak menggelembungkan git).
+      - name: Terbitkan GitHub Release (APK + AAB)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="build-${{ github.run_number }}-v${{ steps.ver.outputs.version }}"
+          CATATAN="APK release Rara Travel v${{ steps.ver.outputs.version }} (build ${{ github.run_number }})."$'\n\n'
+          CATATAN+="Commit: \`${{ github.sha }}\`"$'\n'
+          CATATAN+="Mode backend: Supabase=${{ vars.SUPABASE_URL != '' && 'terisi' || 'kosong' }}, pembayaran=${{ vars.PAYMENTS_ENABLED || 'false' }}"$'\n\n'
+          CATATAN+="Berkas: APK siap pasang (dibagikan via WA/Drive)."
+          ASET=("apk/RaraTravel-v${{ steps.ver.outputs.version }}-release.apk")
+          AAB="build/app/outputs/bundle/release/app-release.aab"
+          if [ -f "$AAB" ]; then
+            ASET+=("$AAB")
+            CATATAN+=" AAB untuk Play Console."$'\n'
+          fi
+          {
+            echo "## Rara Travel v${{ steps.ver.outputs.version }} (build ${{ github.run_number }})"$'\n'
+            echo "$CATATAN"
+          } > /tmp/catatan.md
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${ASET[@]}" --clobber
+            echo "Aset Release $TAG diperbarui."
+          else
+            gh release create "$TAG" "${ASET[@]}" \
+              --target "${{ github.sha }}" \
+              --title "Rara Travel v${{ steps.ver.outputs.version }} (build ${{ github.run_number }})" \
+              --notes-file /tmp/catatan.md || \
+              echo "::warning::Gagal membuat Release (izin token?) — APK tetap ada di artifact & folder apk/."
+          fi
+
       - name: Ringkasan
         run: |
           {
             echo "### APK siap 📦"
             echo ""
             echo '- **Artifact workflow**: lihat bagian *Artifacts* di halaman run ini.'
-            echo "- **Commit ke branch**: \`apk/RaraTravel-v${{ steps.ver.outputs.version }}-release.apk\`"
+            echo "- **Commit ke branch**: \`apk/RaraTravel-v${{ steps.ver.outputs.version }}-release.apk\` (hanya versi terbaru)"
+            echo "- **Salinan permanen**: halaman *Releases* repositori ini (per build)"
             echo ""
             echo 'Install: kirim APK ke HP → tap → izinkan *Install unknown apps* → Install.'
           } >> "$GITHUB_STEP_SUMMARY"

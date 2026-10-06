@@ -10,6 +10,7 @@ import '../models/booking.dart';
 import '../models/booking_status.dart';
 import '../repositories/booking_repository.dart';
 import '../utils/formatters.dart';
+import '../utils/hapus_akun.dart';
 import 'booking_storage.dart';
 import 'edge_client.dart';
 import 'firebase_bootstrap.dart';
@@ -131,11 +132,10 @@ class AuthService {
         body: {'action': 'purge'},
         auth: true,
       );
-      if (hasil['deleted'] != true && hasil['reason'] != 'user_not_found') {
+      if (!HapusAkun.bolehLanjut(hasil)) {
         throw const ApiException(
           code: 'purge_failed',
-          message:
-              'Data akun belum berhasil dihapus dari server. Coba lagi sebentar lagi.',
+          message: HapusAkun.pesanGagal,
         );
       }
     }

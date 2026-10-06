@@ -215,6 +215,21 @@ Bila ingin dipasang (disarankan sebelum jumlah pengguna bertambah):
 
 ---
 
+## Catatan: peninggalan Firebase (dibersihkan setelah langkah 12)
+
+Setelah tulisan Firestore dimatikan (poin 7), sisa ini bisa dihapus:
+
+| Sisa | Kapan aman dihapus | Cara |
+|---|---|---|
+| `functions_sample/` + blok `functions` di `firebase.json` | Setelah langkah 12 | Hapus folder + blok JSON (sudah ditandai LEGACY di berkasnya) |
+| `cloud_firestore` di `pubspec.yaml`, `FirestoreService`, `firestore.rules` | Setelah yakin rollback tak diperlukan (±1 bulan produksi) | Hapus bertahap; jangan lupa hapus job rules di `backend-check.yml` |
+| `firebase_app_check` tetap dipakai (login Firebase masih inti) | — | — |
+
+**Jangan dihapus sekarang**: selama `BOOKING_WRITE` masih `dual`, Firestore
+masih ditulis sebagai cadangan rollback.
+
+---
+
 ## Catatan: kuota Actions
 
 Setiap push ke branch menjalankan **Build APK** (menit Flutter) dan

@@ -1,3 +1,15 @@
+// ⚠️ LEGACY — TIDAK DIPAKAI APLIKASI SEJAK MIGRASI KE SUPABASE.
+//
+// Aplikasi tidak pernah memanggil Cloud Functions (tidak ada `cloud_functions`
+// di pubspec.yaml), jadi fungsi ini TIDAK berada di jalur permintaan:
+// rate limiting di sini tidak melindungi apa pun secara nyata. Notifikasi
+// status pesanan kini dikirim dari Supabase (`notify-booking-status`).
+//
+// Disimpan sementara karena `firebase.json` masih merujuk codebase ini dan
+// Firestore masih ditulis pada mode `dual`. HAPUS folder ini + blok functions
+// di firebase.json SETELAH langkah 12 (matikan tulisan Firestore) selesai —
+// lihat RILIS_PRODUKSI.md poin 7 dan catatan "Peninggalan Firebase".
+//
 // CONTOH Cloud Functions: notifikasi status pesanan + rate limiting anti-spam.
 //
 // Cara pakai (lihat PANDUAN_FIREBASE.md langkah 8):

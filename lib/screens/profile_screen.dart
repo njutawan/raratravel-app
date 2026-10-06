@@ -455,6 +455,11 @@ class _RingkasanBackendCard extends StatelessWidget {
             nilai: BackendConfig.paymentsEnabled ? 'AKTIF' : 'nonaktif',
             sorot: BackendConfig.paymentsEnabled,
           ),
+          _Baris(
+            label: 'Laporan crash (Crashlytics)',
+            nilai: FirebaseBootstrap.crashReporting ? 'aktif' : 'nonaktif',
+            sorot: FirebaseBootstrap.crashReporting,
+          ),
           FutureBuilder<bool>(
             future: MessagingService.tokenTerdaftar(),
             builder: (context, snap) {

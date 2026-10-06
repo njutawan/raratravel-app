@@ -1,3 +1,5 @@
+import 'dart:ui' show PlatformDispatcher;
+
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'app.dart';
@@ -12,7 +14,19 @@ Future<void> main() async {
   // Format tanggal Indonesia (Senin, Selasa, dst.)
   await initializeDateFormatting('id_ID', null);
   await FirebaseBootstrap.init(); // gagal = mode offline, aplikasi tetap jalan
-  if (FirebaseBootstrap.ready) await MessagingService.init(); // worker push
+  if (FirebaseBootstrap.ready) {
+    await MessagingService.init(); // worker push
+    // Laporan crash: galat UI (FlutterError) dan galat di luar widget tree
+    // (PlatformDispatcher) dikirim ke Crashlytics pada build rilis.
+    FlutterError.onError = (detail) {
+      FlutterError.presentError(detail);
+      FirebaseBootstrap.catatGalatFatal(detail.exception, detail.stack);
+    };
+    PlatformDispatcher.instance.onError = (error, stack) {
+      FirebaseBootstrap.catatGalatFatal(error, stack);
+      return true; // sudah ditangani — aplikasi tidak ikut mati
+    };
+  }
   await SupabaseBootstrap.init(); // katalog/booking cloud opsional saat migrasi
   // Membantu dukungan: tampilkan backend mana yang sedang dipakai build ini.
   debugPrint('Rara Travel: ${BackendConfig.deskripsi}');

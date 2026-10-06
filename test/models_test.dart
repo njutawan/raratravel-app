@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:raratravel_app/models/booking.dart';
+import 'package:raratravel_app/utils/hapus_akun.dart';
 import 'package:raratravel_app/models/booking_status.dart';
 
 /// Uji pemetaan status & format data pesanan.
@@ -173,6 +174,35 @@ void main() {
       expect(pesan, contains('Jember → Surabaya'));
       expect(pesan, contains('Promo: RARAHEMAT'));
       expect(pesan, contains('Diskon: Rp50.000'));
+    });
+  });
+
+  /// Aturan H-3: akun Firebase hanya dihapus bila server memastikan data
+  /// pribadi sudah tidak ada. Kalau tidak, pengguna bisa kehilangan akun
+  /// padahal datanya masih tersimpan (janji "hapus permanen" jadi bohong).
+  group('HapusAkun.bolehLanjut (aturan hapus akun)', () {
+    test('data server baru dihapus → boleh lanjut', () {
+      expect(HapusAkun.bolehLanjut({'deleted': true, 'bookings': 3}), isTrue);
+    });
+
+    test('pengguna belum pernah tersinkron → boleh lanjut', () {
+      expect(
+        HapusAkun.bolehLanjut({'deleted': false, 'reason': 'user_not_found'}),
+        isTrue,
+      );
+    });
+
+    test('server gagal/jawaban tak dikenal → JANGAN hapus akun', () {
+      expect(HapusAkun.bolehLanjut({'deleted': false}), isFalse);
+      expect(HapusAkun.bolehLanjut({'deleted': false, 'reason': 'error'}), isFalse);
+      expect(HapusAkun.bolehLanjut({'reason': 'user_not_found2'}), isFalse);
+      expect(HapusAkun.bolehLanjut(null), isFalse);
+      expect(HapusAkun.bolehLanjut(const <String, dynamic>{}), isFalse);
+    });
+
+    test('pesan galat siap tampil, bukan kosong', () {
+      expect(HapusAkun.pesanGagal.trim(), isNotEmpty);
+      expect(HapusAkun.pesanGagal.toLowerCase(), contains('hapus'));
     });
   });
 }
