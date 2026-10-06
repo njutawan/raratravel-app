@@ -13,7 +13,7 @@
  * Aturan yang diuji sama persis dengan yang ada di firestore.rules; kalau
  * salah satu gagal, JANGAN publish rules-nya.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 
 import { initializeTestEnvironment } from "@firebase/rules-unit-testing";
 import {
@@ -51,14 +51,26 @@ async function diizinkan(promise, keterangan) {
 }
 
 const hasil = [];
+/** Ringkasan bersih (tanpa derau emulator) → dibaca CI untuk anotasi. */
+const laporan = [];
 async function uji(nama, fn) {
   await testEnv.clearFirestore();
   try {
     await fn();
     console.log(`  OK    ${nama}`);
+    laporan.push(`OK    ${nama}`);
     hasil.push(true);
   } catch (e) {
-    console.log(`  GAGAL ${nama}\n        ${e?.message ?? e}`);
+    const sebab = String(e?.message ?? e).replace(/\s+/g, " ");
+    const jejak = String(e?.stack ?? "")
+      .split("\n")
+      .slice(1, 4)
+      .map((b) => b.trim())
+      .join(" | ");
+    console.log(`  GAGAL ${nama}\n        ${sebab}`);
+    laporan.push(`GAGAL ${nama}`);
+    laporan.push(`  SEBAB: ${sebab}`);
+    if (jejak) laporan.push(`  JEJAK: ${jejak}`);
     hasil.push(false);
   }
 }
@@ -199,9 +211,14 @@ await uji("rateLimits: klien tidak boleh baca/tulis (hanya server)", async () =>
 // ---------------------------------------------------------------- ringkasan
 const lulus = hasil.filter(Boolean).length;
 console.log(`\n${lulus}/${hasil.length} pengujian rules lulus`);
+laporan.push("", `${lulus}/${hasil.length} pengujian rules lulus`);
 if (lulus !== hasil.length) {
   console.log("❌ firestore.rules TIDAK aman untuk dipublikasikan.");
-  process.exit(1);
+  laporan.push("❌ firestore.rules TIDAK aman untuk dipublikasikan.");
+} else {
+  console.log("✅ firestore.rules sesuai harapan — aman dipublikasikan ke Firebase Console.");
+  laporan.push("✅ firestore.rules sesuai harapan — aman dipublikasikan ke Firebase Console.");
 }
-console.log("✅ firestore.rules sesuai harapan — aman dipublikasikan ke Firebase Console.");
+writeFileSync("rules-result.txt", laporan.join("\n") + "\n");
 await testEnv.cleanup();
+if (lulus !== hasil.length) process.exit(1);

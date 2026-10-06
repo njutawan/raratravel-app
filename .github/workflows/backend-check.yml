@@ -124,11 +124,18 @@ jobs:
             echo "Status: **${{ steps.rules.outcome }}**"
             echo ""
             echo '```'
-            tail -n 40 rules-emulator.log 2>/dev/null || echo "(log belum ada)"
+            if [ -f rules-result.txt ]; then
+              cat rules-result.txt
+            else
+              tail -n 40 rules-emulator.log 2>/dev/null || echo "(log belum ada)"
+            fi
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          if [ -f rules-emulator.log ]; then
-            grep -aE "GAGAL|seharusnya|Error|error TS|❌" rules-emulator.log | head -n 20 | \
+          # Utamakan ringkasan bersih dari skrip uji (berisi SEBAB + JEJAK).
+          LAPOR=rules-result.txt
+          [ -f "$LAPOR" ] || LAPOR=rules-emulator.log
+          if [ -f "$LAPOR" ]; then
+            grep -aE "GAGAL|SEBAB|JEJAK|❌|Error" "$LAPOR" | head -n 30 | \
               while IFS= read -r baris; do
                 echo "::error::$(printf '%s' "$baris" | cut -c1-400)"
               done
