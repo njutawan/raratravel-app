@@ -140,6 +140,39 @@ jobs:
           fi
           exit "$STATUS"
 
+      # Verifikasi cepat: APK yang diunduh benar-benar memakai mode yang
+      # diharapkan (mis. pembayaran AKTIF). Sakelar diambil dari Repository
+      # variables — kalau tabel ini tidak sesuai, APK-nya bukan yang diinginkan.
+      - name: Catat mode backend APK (ringkasan)
+        env:
+          SB_URL: ${{ vars.SUPABASE_URL }}
+          SB_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+          SB_CATALOG: ${{ vars.CATALOG_SOURCE }}
+          SB_BOOKING: ${{ vars.BOOKING_WRITE }}
+          SB_PAYMENTS: ${{ vars.PAYMENTS_ENABLED }}
+        run: |
+          SUPA="kosong"
+          [ -n "$SB_URL" ] && [ -n "$SB_KEY" ] && SUPA="terisi"
+          BAYAR="nonaktif"
+          [ "$SUPA" = "terisi" ] && [ "$SB_PAYMENTS" = "true" ] && BAYAR="AKTIF (tombol Bayar Sekarang tampil)"
+          KATALOG="${SB_CATALOG:-local}"
+          [ "$SUPA" = "kosong" ] && KATALOG="$KATALOG (Supabase kosong)"
+          PESANAN="${SB_BOOKING:-dual}"
+          {
+            echo "### Mode backend APK ini 🧩"
+            echo ""
+            echo "| Bagian | Nilai |"
+            echo "|---|---|"
+            echo "| Supabase | $SUPA |"
+            echo "| Katalog | $KATALOG |"
+            echo "| Penulisan pesanan | $PESANAN |"
+            echo "| Pembayaran online | $BAYAR |"
+            echo ""
+            echo "Sakelar diubah lewat *Settings → Secrets and variables → Actions → Variables*"
+            echo "(atau \`bash tools/set_actions_variables.sh\`)."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Supabase=$SUPA katalog=$KATALOG pesanan=$PESANAN pembayaran=$BAYAR"
+
       - name: Cetak SHA penanda tangan APK (untuk Firebase)
         run: |
           APK_SHA1="$(keytool -printcert -jarfile build/app/outputs/flutter-apk/app-release.apk 2>/dev/null | grep -i 'SHA1:' | head -1)"

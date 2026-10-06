@@ -13,17 +13,24 @@ name: Backend check
 #   * 18 skenario end-to-end: Edge Function dijalankan sungguhan (tools/e2e)
 #   * berkas siap-tempel Dashboard (supabase/deploy-dashboard) tidak basi,
 #     dan bundelnya menjalani 18 skenario yang sama
+#   * firestore.rules diuji di Firestore Emulator (13 pengujian keamanan):
+#     pesanan terikat pemiliknya, tidak bisa dititipkan/dialihkan, dan
+#     rateLimits hanya untuk server
 
 on:
   push:
     paths:
       - "supabase/**"
       - "tools/**"
+      - "firestore.rules"
+      - "firebase.json"
       - ".github/workflows/backend-check.yml"
   pull_request:
     paths:
       - "supabase/**"
       - "tools/**"
+      - "firestore.rules"
+      - "firebase.json"
       - ".github/workflows/backend-check.yml"
   workflow_dispatch:
 
@@ -73,3 +80,32 @@ jobs:
 
       - name: End-to-end berkas siap-tempel Dashboard
         run: E2E_FUNCTIONS_DIR=supabase/deploy-dashboard node tools/e2e/run_e2e.mts
+
+  firestore-rules:
+    name: Aturan Firestore (emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Emulator Firestore berjalan di JVM.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Pasang firebase-tools + SDK uji aturan
+        run: npm install --no-save firebase-tools@15 firebase@12 @firebase/rules-unit-testing@5
+
+      # Kalau job ini merah, JANGAN publish firestore.rules ke Firebase Console.
+      - name: Uji firestore.rules (13 pengujian keamanan)
+        env:
+          CI: "true"
+        run: |
+          npx firebase emulators:exec --only firestore --project demo-raratravel \
+            "node tools/firestore/rules_test.mjs"

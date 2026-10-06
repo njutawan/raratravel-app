@@ -135,6 +135,9 @@ Berkas terkait:
 | `lib/config/backend_config.dart` | sakelar migrasi di sisi aplikasi |
 | `lib/repositories/` | jembatan aplikasi → Edge Function |
 | `RILIS_PRODUKSI.md` | checklist rilis: rules, App Check, SHA, uji HP, listing Play, langkah 12 |
+| `tools/set_actions_variables.sh` | isi *Repository variables* sekali jalan (`--check`, `--build`) — inilah yang menyalakan tombol pembayaran di APK. Versi Windows: `tools/set_actions_variables.ps1` |
+| `tools/firestore/rules_test.mjs` | 13 uji keamanan `firestore.rules` di Firestore Emulator (H-1: titip pesanan ke akun lain, alih kepemilikan, dll.) |
+| `tools/check_firestore_rules.sh` | jalankan uji rules di komputer sendiri (butuh Java; CI sudah menjalankannya otomatis) |
 
 Uji backend tanpa Docker/Supabase CLI (butuh Python 3 + `pgserver`):
 
@@ -146,9 +149,19 @@ node tools/ts_check.js                      # impor & nama ekspor Edge Function
 node tools/e2e/run_e2e.mts                  # Edge Function benar-benar dijalankan
 ```
 
+Jalankan juga uji aturan Firestore di emulator (butuh Java — sudah ada bersama
+Android Studio; di CI jalan otomatis di workflow **Backend check**):
+
+```bash
+bash tools/check_firestore_rules.sh        # 13 uji keamanan firestore.rules
+```
+
 Di GitHub, setiap push juga menjalankan **flutter test**
 (`test/formatters_test.dart`, `test/models_test.dart`) dan `flutter analyze`
-sebelum APK dibangun — jadi galat kode ketahuan lebih awal.
+sebelum APK dibangun — jadi galat kode ketahuan lebih awal. Ringkasan workflow
+**Build APK** memuat tabel *“Mode backend APK ini”* (Supabase, katalog, penulisan
+pesanan, pembayaran) supaya bisa dipastikan APK yang diunduh memang build yang
+diinginkan.
 
 `run_e2e.mts` menjalankan kesepuluh Edge Function di atas PostgreSQL 16 asli
 (tiruan PostgREST + Storage) dengan token Firebase, FCM, dan Snap yang ditiru —

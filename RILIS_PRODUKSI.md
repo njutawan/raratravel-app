@@ -13,17 +13,28 @@ di `LAPORAN_KEAMANAN.md`, `PANDUAN_FIREBASE.md`, `MIGRASI_SUPABASE.md`, dan
 Perbaikan keamanan H-1 (pesanan tidak bisa lagi dititipkan ke akun orang lain)
 **belum berlaku di server** sebelum rules dipublikasikan ulang.
 
+> ✅ Rules-nya sudah **diuji otomatis** di Firestore Emulator — job
+> *Aturan Firestore (emulator)* di workflow **Backend check** menjalankan 13
+> pengujian keamanan (`tools/firestore/rules_test.mjs`): titip pesanan ke akun
+> lain, alih kepemilikan, ubah kode, akses pesanan orang lain, sampai
+> `rateLimits` yang hanya boleh diakses server. Pastikan job itu **hijau**
+> sebelum publish. Bisa juga dijalankan di komputer sendiri:
+> `bash tools/check_firestore_rules.sh` (butuh Java, sudah ada bersama Android
+> Studio).
+
 1. Buka [Firebase Console](https://console.firebase.google.com) → proyek
    `raratravel-apk` → **Firestore Database → Rules**.
 2. Tempel seluruh isi `firestore.rules` dari repo ini → **Publish**.
-3. Uji di tab **Rules Playground**:
+3. Uji cepat di tab **Rules Playground**:
    | Simulasi | Hasil yang benar |
    |---|---|
    | `create /bookings/RARA-X` dengan `userId` ≠ uid pengirim | **Deny** |
    | `create /bookings/RARA-X` dengan `userId` = uid sendiri | Allow |
    | `update /bookings/RARA-X` yang mengganti `userId` | **Deny** |
    | `read /bookings/RARA-X` milik akun lain | **Deny** |
+4. Uji nyata di HP: login → buat pesanan → pesanan **hanya** muncul di akun itu.
 
+- [ ] Job *Aturan Firestore (emulator)* hijau di CI.
 - [ ] Rules ter-publish & 4 simulasi di atas sesuai harapan.
 
 ---
@@ -46,13 +57,15 @@ spam OTP (biaya SMS) dan spam database.
 
 ## 3. Sidik jari SHA — kunci agar login Google tidak rusak 🔴
 
-- [ ] **Sebelum upload pertama**: SHA-1 + SHA-256 debug terdaftar di Firebase
+- [ ] **Sebelum upload pertama**: SHA-1 + SHA-256 **debug** terdaftar di Firebase
       (lihat `android/SHA_FINGERPRINTS.txt`, cocokkan dengan keluaran CI
       *Build APK* → step "Cetak SHA penanda tangan APK").
-- [ ] **Setelah upload AAB pertama**: salin **SHA-256 Play App Signing**
+- [ ] **Setelah upload AAB pertama**: salin **SHA-1 + SHA-256 Play App Signing**
       (Play Console → *Test and release → Setup → App signing*) ke
       Firebase Console → Project Settings → aplikasi Android → *Add fingerprint*.
       **Kalau lupa, login Google & App Check versi Play Store akan rusak.**
+- [ ] Unduh ulang `google-services.json` setelah menambah sidik jari, timpa di
+      `android/app/`, lalu commit (tanpa ini Firebase masih menolak login).
 - [ ] Ganti APK debug-key dengan AAB bertanda tangan rilis
       (`PANDUAN_BUILD_APK.md` §7: `--obfuscate --split-debug-info`), simpan
       `symbols-*.zip` per versi.
@@ -82,6 +95,13 @@ Aplikasi **hanya** menampilkan tombol pembayaran bila build memakai
 - [ ] Isi **Settings → Secrets and variables → Actions → Variables**:
       `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `CATALOG_SOURCE=supabase`,
       `BOOKING_WRITE=dual`, `PAYMENTS_ENABLED=true`.
+      Cara satu perintah (Windows):
+      `.	ools\set_actions_variables.ps1 -Build`; (Linux/macOS/Git Bash):
+      `bash tools/set_actions_variables.sh --build`.
+      Perintah itu menolak kunci rahasia (`service_role`) supaya tidak ikut ke APK.
+- [ ] Jalankan ulang *Build APK* lalu buka **ringkasan workflow** → tabel
+      **“Mode backend APK ini”** harus menulis `Pembayaran online: AKTIF`.
+      Kalau masih *nonaktif*, tombol Bayar Sekarang tidak akan muncul di APK.
 - [ ] Midtrans: server key + client key di secrets Edge Function, mode
       **sandbox** dulu, lalu produksi.
 - [ ] Uji end-to-end di HP: buat pesanan → **Bayar Sekarang** → tautan Midtrans
