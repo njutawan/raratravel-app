@@ -13,6 +13,8 @@
 #   bash tools/set_actions_variables.sh                 # tanya interaktif
 #   bash tools/set_actions_variables.sh --check         # lihat isi sekarang
 #   bash tools/set_actions_variables.sh --build         # setelah mengisi, jalankan CI
+#   bash tools/set_actions_variables.sh --url … --key … --verify
+#       # cek dulu URL + kunci benar-benar diterima Supabase (butuh internet)
 #   bash tools/set_actions_variables.sh \
 #     --url https://xxxx.supabase.co --key sb_publishable_xxx \
 #     --catalog supabase --booking dual --payments true
@@ -23,18 +25,23 @@ cd "$ROOT"
 
 CHECK=0
 BUILD=0
+VERIFY=0
 URL=""; KEY=""; CATALOG=""; BOOKING=""; PAYMENTS=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --check) CHECK=1 ;;
     --build) BUILD=1 ;;
+    --verify) VERIFY=1 ;;
     --url) URL="${2:-}"; shift ;;
     --key) KEY="${2:-}"; shift ;;
     --catalog) CATALOG="${2:-}"; shift ;;
     --booking) BOOKING="${2:-}"; shift ;;
     --payments) PAYMENTS="${2:-}"; shift ;;
-    -h|--help) grep '^#' "$0" | tail -n +2 | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help)
+      # Hanya blok komentar di awal berkas (bukan komentar isi kode).
+      awk 'NR>1 && /^#/ { sub(/^# ?/, ""); print; lanjut=1; next } NR>1 && lanjut { exit }' "$0"
+      exit 0 ;;
     *) echo "Argumen tidak dikenal: $1 (coba --help)"; exit 2 ;;
   esac
   shift
@@ -57,6 +64,35 @@ list_vars() {
     warn "Tidak bisa membaca daftar variables (token gh kurang izin 'Variables: read')."
     return 1
   }
+}
+
+# Cek URL + kunci benar-benar diterima proyek Supabase (tanpa mengubah apa pun).
+verifikasi_supabase() {
+  local url="$1" key="$2" kode_url kode_key
+  if ! command -v curl >/dev/null 2>&1; then
+    warn "curl tidak tersedia — verifikasi dilewati."
+    return 0
+  fi
+  kode_url="$(curl -s -o /dev/null -m 10 -w '%{http_code}' "$url/auth/v1/health" 2>/dev/null || echo 000)"
+  if [ "$kode_url" = "000" ]; then
+    warn "Tidak bisa menghubungi $url (offline / DNS / proyek dijeda). Verifikasi dilewati."
+    return 0
+  fi
+  if [ "$kode_url" != "200" ]; then
+    warn "Auth Supabase menjawab HTTP $kode_url — pastikan URL proyek benar & aktif."
+    return 0
+  fi
+  ok "URL proyek hidup (auth/v1/health → 200)."
+  kode_key="$(curl -s -o /dev/null -m 10 -w '%{http_code}' -H "apikey: $key" "$url/rest/v1/" 2>/dev/null || echo 000)"
+  case "$kode_key" in
+    200|204) ok "Kunci diterima Supabase (HTTP $kode_key)." ;;
+    401|403)
+      warn "Kunci DITOLAK Supabase (HTTP $kode_key). Salin ulang anon/publishable key dari Dashboard → Project Settings → API."
+      return 1
+      ;;
+    404)     warn "REST menjawab 404 — jalankan migrasi dulu (bash tools/setup_supabase.sh)." ;;
+    *)       warn "REST menjawab HTTP $kode_key — cek migrasi/RLS bila ada keluhan." ;;
+  esac
 }
 
 if [ "$CHECK" -eq 1 ]; then
@@ -90,6 +126,13 @@ esac
 case "$KEY" in
   *service_role*|sb_secret_*) fail "Itu kunci RAHASIA (service_role/secret). Jangan ditaruh di aplikasi!"; exit 1 ;;
 esac
+
+if [ "$VERIFY" -eq 1 ]; then
+  if ! verifikasi_supabase "$URL" "$KEY"; then
+    fail "Verifikasi gagal — variables TIDAK diubah. Perbaiki URL/kunci lalu ulangi."
+    exit 1
+  fi
+fi
 
 # Sakelar opsional: tanya hanya bila belum diberikan lewat argumen.
 if [ -z "$CATALOG" ]; then
