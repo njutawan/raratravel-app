@@ -56,6 +56,10 @@ jobs:
       - name: flutter pub get
         run: flutter pub get
 
+      # Unit test (format harga/tanggal, model pesanan & status).
+      - name: flutter test
+        run: flutter test
+
       # Gerbang cepat: galat kode ketahuan sebelum Gradle jalan, dan pesannya
       # muncul di log CI. Peringatan/informasi tidak menggagalkan build.
       - name: flutter analyze (galat kode saja)
@@ -73,9 +77,11 @@ jobs:
       - name: Baca versi aplikasi (pubspec.yaml)
         id: ver
         run: |
-          VERSION="$(grep -E '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)"
+          FULL="$(grep -E '^version:' pubspec.yaml | awk '{print $2}')"
+          VERSION="${FULL%%+*}"
           echo "version=${VERSION:-dev}" >> "$GITHUB_OUTPUT"
-          echo "Versi aplikasi: ${VERSION:-dev}"
+          echo "full=${FULL:-dev}" >> "$GITHUB_OUTPUT"
+          echo "Versi aplikasi: ${FULL:-dev}"
 
       - name: flutter build apk --release
         # Supabase bersifat opsional: isi Repository variables berikut agar APK
@@ -87,6 +93,7 @@ jobs:
         #   BOOKING_WRITE   dual | supabase | firestore
         #   PAYMENTS_ENABLED  true | false
         env:
+          APP_VERSION: ${{ steps.ver.outputs.full }}
           SB_URL: ${{ vars.SUPABASE_URL }}
           SB_KEY: ${{ vars.SUPABASE_ANON_KEY }}
           SB_CATALOG: ${{ vars.CATALOG_SOURCE }}
@@ -94,6 +101,8 @@ jobs:
           SB_PAYMENTS: ${{ vars.PAYMENTS_ENABLED }}
         run: |
           DEFINES=()
+          # Versi aplikasi dilaporkan ke server (user_devices.app_version).
+          if [ -n "$APP_VERSION" ]; then DEFINES+=("--dart-define=APP_VERSION=$APP_VERSION"); fi
           if [ -n "$SB_URL" ]; then DEFINES+=("--dart-define=SUPABASE_URL=$SB_URL"); fi
           if [ -n "$SB_KEY" ]; then DEFINES+=("--dart-define=SUPABASE_ANON_KEY=$SB_KEY"); fi
           if [ -n "$SB_CATALOG" ]; then DEFINES+=("--dart-define=CATALOG_SOURCE=$SB_CATALOG"); fi
@@ -156,6 +165,9 @@ jobs:
           # -f: .gitignore sengaja mengecualikan apk/ — APK hasil CI memang
           # ingin di-commit agar mudah diambil lewat `git pull`.
           git add -f "apk/RaraTravel-v${{ steps.ver.outputs.version }}-release.apk"
+          # `flutter pub get` bisa memperbarui pubspec.lock (dependensi baru),
+          # ikutkan agar berkas kunci tidak tertinggal basi di repo.
+          if ! git diff --quiet -- pubspec.lock; then git add pubspec.lock; fi
           if git diff --cached --quiet; then
             echo "APK tidak berubah — tidak ada yang di-commit."
           else

@@ -1,4 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../models/booking.dart';
 import '../models/booking_status.dart';
@@ -51,6 +54,11 @@ class _PaymentSheetState extends State<PaymentSheet> {
   Map<String, dynamic> _status = const {};
   String _metode = 'online';
   PaymentIntent? _tagihanManual;
+  final ImagePicker _picker = ImagePicker();
+
+  /// Path bukti transfer yang sudah terunggah ke Storage (dikirim ke admin).
+  String? _pathBukti;
+  bool _unggah = false;
 
   Booking get _booking => widget.booking;
 
@@ -129,6 +137,11 @@ class _PaymentSheetState extends State<PaymentSheet> {
         provider: 'midtrans',
       );
       if (!mounted) return;
+      if (tagihan.sudahLunas) {
+        _pesan('Tagihan ini sudah lunas.');
+        await _muatStatus();
+        return;
+      }
       if (tagihan.adaTautanBayar) {
         final dibuka = await PaymentRepository.bukaTautanBayar(
           tagihan.checkoutUrl!,
@@ -182,6 +195,74 @@ class _PaymentSheetState extends State<PaymentSheet> {
     }
   }
 
+  /// Pilih foto bukti transfer (galeri/kamera) lalu unggah ke Storage.
+  ///
+  /// Berkas masuk bucket privat `payment-proofs` dan hanya bisa dibuka admin,
+  /// jadi bukti transfer tidak pernah nongkrong di ruang publik.
+  Future<void> _pilihUnggahBukti() async {
+    final sumber = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Pilih dari Galeri'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined),
+              title: const Text('Ambil Foto'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (sumber == null) return;
+
+    setState(() {
+      _unggah = true;
+      _galat = null;
+    });
+    try {
+      final berkas = await _picker.pickImage(
+        source: sumber,
+        // Kompres di HP: bukti transfer cukup jelas di 1600px, hemat kuota.
+        maxWidth: 1600,
+        imageQuality: 80,
+      );
+      if (berkas == null) return; // pengguna membatalkan
+      final Uint8List bytes = await berkas.readAsBytes();
+      if (bytes.isEmpty) {
+        setState(() => _galat = 'Berkas kosong. Coba pilih ulang.');
+        return;
+      }
+      final path = await PaymentRepository.unggahBuktiTransfer(
+        kode: _booking.kode,
+        bytes: bytes,
+        filename: berkas.name,
+        contentType: berkas.mimeType,
+      );
+      if (!mounted) return;
+      setState(() => _pathBukti = path);
+      _pesan('Bukti transfer terunggah. Kirim ke admin lewat WhatsApp.');
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() {
+          _galat = e.message.isEmpty ? 'Gagal mengunggah bukti.' : e.message;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _galat = 'Gagal mengunggah bukti transfer. Coba lagi.');
+      }
+    } finally {
+      if (mounted) setState(() => _unggah = false);
+    }
+  }
+
   void _kirimBukti() {
     final nominal = _tagihanManual?.amount ?? _sisa;
     final referensi = _tagihanManual?.providerReference;
@@ -194,6 +275,9 @@ class _PaymentSheetState extends State<PaymentSheet> {
       ..writeln('Nominal: ${Formatters.idr(nominal)}');
     if (referensi != null && referensi.isNotEmpty) {
       b.writeln('Referensi: $referensi');
+    }
+    if (_pathBukti != null && _pathBukti!.isNotEmpty) {
+      b.writeln('Bukti transfer: sudah diunggah ke aplikasi ($_pathBukti).');
     }
     b
       ..writeln('')
@@ -440,6 +524,33 @@ class _PaymentSheetState extends State<PaymentSheet> {
                     ),
                     const SizedBox(height: 10),
                   ],
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _unggah || _proses ? null : _pilihUnggahBukti,
+                      icon: _unggah
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Icon(
+                              _pathBukti == null
+                                  ? Icons.upload_file
+                                  : Icons.check_circle,
+                              size: 18,
+                              color: _pathBukti == null ? null : Colors.green,
+                            ),
+                      label: Text(
+                        _unggah
+                            ? 'Mengunggah…'
+                            : (_pathBukti == null
+                                  ? 'Unggah Bukti Transfer'
+                                  : 'Bukti Terunggah — Ganti'),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(

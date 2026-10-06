@@ -65,16 +65,6 @@ class BookingStatus {
     return value == pending || value == confirmed;
   }
 
-  /// Warna badge di UI: hijau (jalan), biru (selesai), merah (batal).
-  static bool isSuccess(String? code) {
-    final value = BookingStatus.code(code);
-    return value == confirmed || value == completed;
-  }
-
-  static bool isFailure(String? code) {
-    final value = BookingStatus.code(code);
-    return value == cancelled || value == expired;
-  }
 }
 
 /// Status pembayaran pada server.

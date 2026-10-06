@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Preferensi onboarding & kota asal favorit. Tersimpan lokal di HP.
@@ -24,11 +25,32 @@ class PreferencesService {
     return prefs.getString(_kotaKey);
   }
 
-  // --- Preferensi dasar layar selamat datang (mata uang & bahasa) ---
+  // --- Preferensi dasar (mata uang & bahasa) yang benar-benar DIPAKAI -------
+  //
+  // Pilihan disimpan di HP, dimuat sekali saat start ke [mataUang]/[bahasa]
+  // sehingga widget lain bisa mendengarkan perubahan tanpa FutureBuilder:
+  //   * mata uang → format harga (Formatters.idr)
+  //   * bahasa    → locale MaterialApp (nama hari/bulan + dialog tanggal)
+  //
+  // Daftar pilihan sengaja hanya berisi yang benar-benar didukung. Saat
+  // multi-bahasa ditambahkan: tambahkan 'en' di daftarBahasa + berkas
+  // terjemahan, lalu pakai [bahasa] di widget.
+
+  static const String defaultMataUang = 'IDR';
+  static const String defaultBahasa = 'id';
+
+  /// Pilihan yang tersedia (layar preferensi & Profil).
+  static const List<String> daftarMataUang = ['IDR'];
+  static const List<String> daftarBahasa = ['id'];
+
+  /// Nilai terkini untuk UI (listener) — diisi [muatPreferensi] saat start.
+  static final ValueNotifier<String> mataUang = ValueNotifier(defaultMataUang);
+  static final ValueNotifier<String> bahasa = ValueNotifier(defaultBahasa);
+
   static const _mataUangKey = 'rara_mata_uang_v1';
   static const _bahasaKey = 'rara_bahasa_v1';
 
-  /// Simpan pilihan dari layar selamat datang.
+  /// Simpan pilihan dari layar preferensi.
   static Future<void> setPreferensiDasar({
     required String mataUang,
     required String bahasa,
@@ -38,16 +60,37 @@ class PreferencesService {
     await prefs.setString(_bahasaKey, bahasa);
   }
 
-  /// Mata uang terpilih (saat ini selalu IDR; siap multi-mata-uang nanti).
-  static Future<String> getMataUang() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_mataUangKey) ?? 'IDR';
+  /// Muat preferensi tersimpan ke notifier (panggil sekali di awal aplikasi).
+  /// Aman gagal: nilai bawaan tetap dipakai bila terjadi masalah.
+  static Future<void> muatPreferensi() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      mataUang.value = prefs.getString(_mataUangKey) ?? defaultMataUang;
+      bahasa.value = prefs.getString(_bahasaKey) ?? defaultBahasa;
+    } catch (_) {}
   }
 
-  /// Bahasa terpilih (saat ini selalu Indonesia).
-  static Future<String> getBahasa() async {
+  /// Baca preferensi tersimpan sekaligus (layar preferensi & Profil).
+  static Future<({String mataUang, String bahasa})> getPreferensi() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_bahasaKey) ?? 'id';
+    return (
+      mataUang: prefs.getString(_mataUangKey) ?? defaultMataUang,
+      bahasa: prefs.getString(_bahasaKey) ?? defaultBahasa,
+    );
+  }
+
+  /// Ubah mata uang saja (dipakai Profil) — langsung diterapkan ke UI.
+  static Future<void> setMataUang(String kode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_mataUangKey, kode);
+    mataUang.value = kode;
+  }
+
+  /// Ubah bahasa saja (dipakai Profil) — langsung diterapkan ke UI.
+  static Future<void> setBahasa(String kode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_bahasaKey, kode);
+    bahasa.value = kode;
   }
 
   // --- Primer notifikasi ---

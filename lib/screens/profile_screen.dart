@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/whatsapp_service.dart';
 import '../services/auth_service.dart';
 import '../services/firebase_bootstrap.dart';
+import '../services/preferences_service.dart';
 import 'login_carousel_screen.dart';
 import '../theme/app_theme.dart';
 import '../utils/constants.dart';
@@ -218,6 +219,9 @@ class ProfileScreen extends StatelessWidget {
           ),
           const SizedBox(height: 12),
 
+          const _PreferensiCard(),
+          const SizedBox(height: 12),
+
           Card(
             child: Column(
               children: [
@@ -377,6 +381,115 @@ class _AccountCard extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Kartu preferensi (mata uang & bahasa).
+///
+/// Pilihan ini benar-benar dipakai aplikasi: mata uang mengganti simbol pada
+/// semua harga, bahasa mengganti locale (nama hari/bulan + dialog tanggal).
+class _PreferensiCard extends StatelessWidget {
+  const _PreferensiCard();
+
+  static String _labelMataUang(String kode) => switch (kode) {
+    'IDR' => 'IDR - Rupiah Indonesia (Rp)',
+    _ => kode,
+  };
+
+  static String _labelBahasa(String kode) => switch (kode) {
+    'id' => 'Indonesia',
+    'en' => 'English',
+    _ => kode,
+  };
+
+  Future<void> _pilih(
+    BuildContext context, {
+    required String judul,
+    required List<String> pilihan,
+    required String terpilih,
+    required String Function(String) label,
+    required Future<void> Function(String) onPilih,
+  }) async {
+    final hasil = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text(judul),
+        children: [
+          // RadioGroup: API pilihan tunggal terbaru Flutter (groupValue &
+          // onChanged tidak lagi dipasang pada tiap RadioListTile).
+          RadioGroup<String>(
+            groupValue: terpilih,
+            onChanged: (v) => Navigator.pop(ctx, v),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final kode in pilihan)
+                  RadioListTile<String>(value: kode, title: Text(label(kode))),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+    if (hasil != null) await onPilih(hasil);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<String>(
+      valueListenable: PreferencesService.mataUang,
+      builder: (context, mataUangKode, _) => ValueListenableBuilder<String>(
+        valueListenable: PreferencesService.bahasa,
+        builder: (context, bahasaKode, __) => Card(
+          child: Column(
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Preferensi',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(
+                  Icons.attach_money,
+                  color: AppTheme.primary,
+                ),
+                title: const Text('Mata Uang'),
+                subtitle: Text(_labelMataUang(mataUangKode)),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _pilih(
+                  context,
+                  judul: 'Pilih Mata Uang',
+                  pilihan: PreferencesService.daftarMataUang,
+                  terpilih: mataUangKode,
+                  label: _labelMataUang,
+                  onPilih: PreferencesService.setMataUang,
+                ),
+              ),
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              ListTile(
+                leading: const Icon(Icons.translate, color: AppTheme.primary),
+                title: const Text('Bahasa'),
+                subtitle: Text(_labelBahasa(bahasaKode)),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _pilih(
+                  context,
+                  judul: 'Pilih Bahasa',
+                  pilihan: PreferencesService.daftarBahasa,
+                  terpilih: bahasaKode,
+                  label: _labelBahasa,
+                  onPilih: PreferencesService.setBahasa,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

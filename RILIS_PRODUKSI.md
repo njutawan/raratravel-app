@@ -1,0 +1,149 @@
+# ✅ Checklist Rilis Produksi — Rara Travel & Tour
+
+**Cara pakai:** kerjakan dari atas ke bawah, centang satu per satu. Semua poin
+di sini **tidak bisa dikerjakan dari dalam kode** — butuh Firebase/Supabase
+Console, Play Console, atau HP fisik. Rincian latar belakang tiap langkah ada
+di `LAPORAN_KEAMANAN.md`, `PANDUAN_FIREBASE.md`, `MIGRASI_SUPABASE.md`, dan
+`AUDIT_RILIS.md`.
+
+---
+
+## 1. Firestore Rules — WAJIB, 5 menit 🔴
+
+Perbaikan keamanan H-1 (pesanan tidak bisa lagi dititipkan ke akun orang lain)
+**belum berlaku di server** sebelum rules dipublikasikan ulang.
+
+1. Buka [Firebase Console](https://console.firebase.google.com) → proyek
+   `raratravel-apk` → **Firestore Database → Rules**.
+2. Tempel seluruh isi `firestore.rules` dari repo ini → **Publish**.
+3. Uji di tab **Rules Playground**:
+   | Simulasi | Hasil yang benar |
+   |---|---|
+   | `create /bookings/RARA-X` dengan `userId` ≠ uid pengirim | **Deny** |
+   | `create /bookings/RARA-X` dengan `userId` = uid sendiri | Allow |
+   | `update /bookings/RARA-X` yang mengganti `userId` | **Deny** |
+   | `read /bookings/RARA-X` milik akun lain | **Deny** |
+
+- [ ] Rules ter-publish & 4 simulasi di atas sesuai harapan.
+
+---
+
+## 2. App Check — Play Integrity (30 menit, sangat disarankan) 🟠
+
+Tanpa ini, API key Firebase yang tertanam di APK bisa dipakai script luar untuk
+spam OTP (biaya SMS) dan spam database.
+
+- [ ] **Play Integrity** aktif di Console → **App Check** → aplikasi Android.
+- [ ] Token debug HP development terdaftar **sebelum** enforcement:
+      `bash tools/appcheck_debug_token.sh --watch` (salin token dari logcat).
+- [ ] **Enforcement** dinyalakan untuk **Firestore** dan **Authentication**.
+- [ ] Uji: login OTP + buat pesanan di HP fisik → harus tetap jalan.
+
+> Urutan penting: token debug dulu, enforcement kemudian. Kalau terbalik,
+> build debug Anda sendiri ikut terblokir.
+
+---
+
+## 3. Sidik jari SHA — kunci agar login Google tidak rusak 🔴
+
+- [ ] **Sebelum upload pertama**: SHA-1 + SHA-256 debug terdaftar di Firebase
+      (lihat `android/SHA_FINGERPRINTS.txt`, cocokkan dengan keluaran CI
+      *Build APK* → step "Cetak SHA penanda tangan APK").
+- [ ] **Setelah upload AAB pertama**: salin **SHA-256 Play App Signing**
+      (Play Console → *Test and release → Setup → App signing*) ke
+      Firebase Console → Project Settings → aplikasi Android → *Add fingerprint*.
+      **Kalau lupa, login Google & App Check versi Play Store akan rusak.**
+- [ ] Ganti APK debug-key dengan AAB bertanda tangan rilis
+      (`PANDUAN_BUILD_APK.md` §7: `--obfuscate --split-debug-info`), simpan
+      `symbols-*.zip` per versi.
+- [ ] Naikkan `versionCode` di `pubspec.yaml` setiap upload.
+
+---
+
+## 4. Supabase — fungsi & notifikasi (sekali saja)
+
+- [ ] 11 migrasi + 10 Edge Function ter-deploy
+      (`bash tools/setup_supabase.sh`, atau jalur Dashboard di
+      `MIGRASI_SUPABASE.md` §2.5).
+- [ ] Secrets Edge Function terisi (`MIGRASI_SUPABASE.md` §3): Firebase service
+      account, FCM, Midtrans (bila pembayaran online dipakai).
+- [ ] Uji kirim notifikasi: ubah status pesanan lewat `manage-booking`
+      (`admin-set-status`) → **push FCM masuk ke HP**.
+- [ ] `payment-webhook` menerima notifikasi uji Midtrans dan menandai `paid`.
+- [ ] Budget alert Supabase/Firebase aktif (kuota & tagihan tak kejutan).
+
+---
+
+## 5. Pembayaran online (bila diaktifkan)
+
+Aplikasi **hanya** menampilkan tombol pembayaran bila build memakai
+`PAYMENTS_ENABLED=true` **dan** Supabase terkonfigurasi (URL + anon key).
+
+- [ ] Isi **Settings → Secrets and variables → Actions → Variables**:
+      `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `CATALOG_SOURCE=supabase`,
+      `BOOKING_WRITE=dual`, `PAYMENTS_ENABLED=true`.
+- [ ] Midtrans: server key + client key di secrets Edge Function, mode
+      **sandbox** dulu, lalu produksi.
+- [ ] Uji end-to-end di HP: buat pesanan → **Bayar Sekarang** → tautan Midtrans
+      terbuka → bayar (sandbox) → status pesanan jadi **Lunas**.
+- [ ] Uji jalur transfer manual: **Unggah Bukti Transfer** (galeri/kamera) →
+      kirim ke admin via WA → staf menandai lunas lewat `payment-intent`.
+- [ ] Cek bukti transfer **tidak bisa** dibuka orang lain (bucket privat:
+      `payment-proofs`).
+
+---
+
+## 6. Matriks uji HP fisik (wajib sebelum produksi) 📱
+
+| Skenario | Lolos bila |
+|---|---|
+| HP low-end RAM 2 GB, mode profile | Tanpa jank parah / ANR |
+| Android 6 (minSdk) & Android 16 (target) | Install + login + booking jalan |
+| TalkBack + font maksimum + rotasi + dark mode sistem | Semua terbaca, tanpa overflow merah |
+| Ganti **Mata Uang/Bahasa** di Profil | Harga & nama hari/bulan langsung berubah |
+| Offline total (mode pesawat) | Pesanan lokal + WA jalan; saat online lagi, pesanan **tersinkron otomatis** (buka aplikasi sekali, login) |
+| Interupsi: telepon saat OTP, putar layar saat loading | Tanpa crash / state aneh |
+| Install fresh & upgrade (backup mati) | Login → riwayat cloud pulih |
+| Batalkan pesanan | Status langsung "Dibatalkan", tombol Batalkan hilang |
+| Unggah bukti transfer dari galeri & kamera | Terunggah, admin bisa membuka |
+
+---
+
+## 7. Langkah 12 migrasi: matikan tulisan Firestore
+
+Jangan ubah `BOOKING_WRITE=supabase` sebelum **semua** poin ini tercentang
+(rincian: `MIGRASI_SUPABASE.md` §9):
+
+- [ ] Katalog dari server (`CATALOG_SOURCE=supabase`) dipakai ≥ 1 minggu tanpa keluhan.
+- [ ] Jumlah pesanan harian di Firestore **dan** PostgreSQL sama
+      (`admin_stats` vs Console Firestore). Ada selisih? Minta pengguna membuka
+      aplikasi sekali dengan internet — outbox akan mengirim pesanan yang
+      tertinggal, lalu periksa lagi.
+- [ ] Impor data lama selesai (`total`, `inserted`, `skipped` cocok).
+- [ ] Notifikasi FCM, pembayaran, dan alur admin (`admin-import`,
+      `manage-booking`) sudah diuji.
+- [ ] Baru setelah itu: `BOOKING_WRITE=supabase`.
+
+---
+
+## 8. Listing Play Store 🏪
+
+- [ ] URL Kebijakan Privasi: `https://raratravel.id/privacy-policy/`
+      (halaman tayang & diperbarui).
+- [ ] Formulir **Data Safety** diisi sesuai `LAPORAN_KEAMANAN.md` §5.3
+      (nama, no. HP, alamat, email opsional; dibagikan ke Firebase/Google &
+      WhatsApp saat pengguna menekan konfirmasi; **hapus akun tersedia di
+      aplikasi** → Profil → Hapus Akun).
+- [ ] Screenshot HP + feature graphic + deskripsi bahasa Indonesia.
+- [ ] Kuesioner rating konten & target audiens.
+- [ ] Rilis bertahap: internal testing → tertutup → produksi 20% → 100%.
+
+---
+
+## 9. Setelah rilis
+
+- [ ] Crashlytics + pantau Android Vitals/ANR, balas review pengguna.
+- [ ] Ulangi audit (`AUDIT_RILIS.md`) setiap menambah fitur sensitif / naik
+      major SDK.
+- [ ] Upgrade SDK Firebase/Google terjadwal (catatan M-4) — butuh uji regresi
+      OTP, Google login, booking, hapus akun.

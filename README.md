@@ -24,7 +24,7 @@ riwayat pesanan offline, dan konfirmasi otomatis via WhatsApp admin
 | 🚗 Sewa Mobil | Calya–Elf Long, harga +sopir & lepas kunci, pesan via WA |
 | 🏝️ Paket Wisata | Bromo, Ijen, Bali, Nusa Penida, Papuma + tombol tanya via WA |
 | 📦 Kirim Paket | Estimasi ongkir otomatis + pesan jemput via WA |
-| 👤 Profil | Tentang kami, ketentuan/refund, kontak, sosmed, website |
+| 👤 Profil | Tentang kami, ketentuan/refund, kontak, sosmed, website, **preferensi mata uang & bahasa** |
 
 **Tanpa server / tanpa login** — cocok sebagai MVP. Semua pesanan masuk ke
 WhatsApp admin dalam format rapi. Nanti bisa disambung ke Firebase/API.
@@ -134,6 +134,7 @@ Berkas terkait:
 | `supabase/functions/` | 10 Edge Function (auth sync, katalog, booking, bayar, notifikasi, admin) |
 | `lib/config/backend_config.dart` | sakelar migrasi di sisi aplikasi |
 | `lib/repositories/` | jembatan aplikasi → Edge Function |
+| `RILIS_PRODUKSI.md` | checklist rilis: rules, App Check, SHA, uji HP, listing Play, langkah 12 |
 
 Uji backend tanpa Docker/Supabase CLI (butuh Python 3 + `pgserver`):
 
@@ -144,6 +145,10 @@ python3 -m venv /tmp/venv
 node tools/ts_check.js                      # impor & nama ekspor Edge Function
 node tools/e2e/run_e2e.mts                  # Edge Function benar-benar dijalankan
 ```
+
+Di GitHub, setiap push juga menjalankan **flutter test**
+(`test/formatters_test.dart`, `test/models_test.dart`) dan `flutter analyze`
+sebelum APK dibangun — jadi galat kode ketahuan lebih awal.
 
 `run_e2e.mts` menjalankan kesepuluh Edge Function di atas PostgreSQL 16 asli
 (tiruan PostgREST + Storage) dengan token Firebase, FCM, dan Snap yang ditiru —
