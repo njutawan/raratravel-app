@@ -79,6 +79,12 @@ jobs:
           if [ "$STATUS" -ne 0 ]; then
             RINGKAS="$(grep -E '\[E\]|Expected:|Actual:|Which:|Test failed' /tmp/test.log | head -10 | tr '\n' '~' | cut -c1-1400)"
             echo "::error title=Test gagal::${RINGKAS:-tidak terdeteksi}"
+          else
+            # Anotasi ringkas = bukti yang bisa dilihat langsung di halaman run
+            # (tanpa membuka log) bahwa tes benar-benar dijalankan & lulus.
+            LULUS="$(grep -E 'All tests passed|Semua tes lulus' /tmp/test.log | tail -1)"
+            JUMLAH="$(grep -oE '\+[0-9]+' /tmp/test.log | tail -1 | tr -d '+')"
+            echo "::notice title=Test lulus::${LULUS:-selesai} — ${JUMLAH:-?} tes"
           fi
           exit "$STATUS"
 
