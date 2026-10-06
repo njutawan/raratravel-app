@@ -13,6 +13,7 @@
 #   4. firestore.rules: emulator (bila Java ada) atau status job CI
 #   5. Keystore debug: SHA-1/256 cocok dengan SHA_FINGERPRINTS.txt + google-services.json
 #   6. Artefak rilis: DATA_SAFETY.md, halaman hapus akun, .firebaserc, versi aplikasi
+#   7. Kesiapan deploy: workflow deploy ada + secrets/variables Actions terpasang
 #
 # Keluar 0 bila semua pemeriksaan lokal lulus. Bagian yang butuh Console/kredensial
 # TIDAK dinilai di sini — skrip mencetak perintah verifikasinya di tabel akhir.
@@ -37,7 +38,7 @@ lewati() { kuning "  ↷ $*"; LEWAT=$((LEWAT+1)); }
 while [ $# -gt 0 ]; do
   case "$1" in
     --cepat|--fast) CEPAT=1; shift ;;
-    --bantu|--help|-h) sed -n '2,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --bantu|--help|-h) sed -n '2,27p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) merah "Argumen tidak dikenal: $1"; exit 2 ;;
   esac
 done
@@ -243,6 +244,80 @@ if grep -q 'AndroidProvider.playIntegrity' lib/services/firebase_bootstrap.dart;
 fi
 if grep -q 'Hapus Akun' lib/screens/profile_screen.dart; then
   ok "tombol Hapus Akun ada di aplikasi (temuan H-2)"
+fi
+
+# ===========================================================================
+judul "7. Kesiapan deploy (workflow + secrets Actions)"
+# ===========================================================================
+# Deploy jalan di GitHub Actions, jadi pastikan workflow-nya ada dan rahasianya
+# sudah terpasang — supaya `gh workflow run` tidak gagal di tengah jalan.
+for w in deploy-firebase.yml deploy-supabase.yml; do
+  jalur=".github/workflows/$w"
+  if [ ! -f "$jalur" ]; then
+    tolak "$jalur belum ada — deploy tidak bisa dijalankan dari Actions"
+    continue
+  fi
+  if grep -q 'workflow_dispatch' "$jalur"; then
+    ok "$w siap dipanggil: gh workflow run $w"
+  else
+    tolak "$w tidak punya pemicu workflow_dispatch"
+  fi
+  keras="$(grep -nE 'sb_secret_[A-Za-z0-9]{8,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|eyJhbGciOi[A-Za-z0-9_-]{20,}' "$jalur" || true)"
+  if [ -n "$keras" ]; then
+    tolak "$w memuat rahasia hardcoded — pindahkan ke secrets:"
+    printf '%s\n' "$keras" | sed 's/^/      /'
+  fi
+done
+
+rahasia_wajib="SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD"
+rahasia_pilih="FIREBASE_SERVICE_ACCOUNT_JSON FIREBASE_TOKEN"
+rahasia_opsional="NOTIFY_WEBHOOK_SECRET MIDTRANS_SERVER_KEY"
+vars_wajib="SUPABASE_PROJECT_REF SUPABASE_ANON_KEY FIREBASE_PROJECT_ID"
+
+ada_di() { printf '%s\n' "$1" | grep -qx "$2"; }
+
+if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+  daftar_secret="$(gh secret list 2>/dev/null | awk 'NR>1 {print $1}')"
+  daftar_vars="$(gh variable list 2>/dev/null | awk 'NR>1 {print $1}')"
+  if [ -z "$daftar_secret" ] && [ -z "$daftar_vars" ]; then
+    lewati "daftar secrets/variables tidak terbaca (token kurang izin) — periksa di Settings → Secrets and variables → Actions"
+    info "Wajib: $rahasia_wajib · variables: $vars_wajib"
+  else
+    for s in $rahasia_wajib; do
+      ada_di "$daftar_secret" "$s" && ok "secret $s terpasang" || tolak "secret $s BELUM terpasang"
+    done
+    # Cukup salah satu dari dua cara autentikasi Firebase.
+    if ada_di "$daftar_secret" "FIREBASE_SERVICE_ACCOUNT_JSON"; then
+      ok "secret FIREBASE_SERVICE_ACCOUNT_JSON terpasang"
+    elif ada_di "$daftar_secret" "FIREBASE_TOKEN"; then
+      ok "secret FIREBASE_TOKEN terpasang"
+    else
+      tolak "belum ada FIREBASE_SERVICE_ACCOUNT_JSON / FIREBASE_TOKEN → deploy Firebase akan gagal"
+    fi
+    for v in $vars_wajib; do
+      ada_di "$daftar_vars" "$v" && ok "variable $v terpasang" || tolak "variable $v BELUM terpasang"
+    done
+    for s in $rahasia_opsional; do
+      ada_di "$daftar_secret" "$s" && ok "secret opsional $s terpasang" \
+        || info "secret opsional $s belum ada (boleh dibiarkan kosong)"
+    done
+  fi
+  # Workflow baru muncul di tab Actions setelah berkasnya ada di branch default.
+  daftar_wf="$(gh workflow list --limit 100 2>/dev/null)"
+  for w in deploy-firebase.yml deploy-supabase.yml; do
+    [ -f ".github/workflows/$w" ] || continue
+    nama="$(sed -n 's/^name:[[:space:]]*//p' ".github/workflows/$w" | head -1)"
+    [ -n "$nama" ] || continue
+    if printf '%s\n' "$daftar_wf" | grep -qF "$nama"; then
+      ok "workflow '$nama' terdaftar di tab Actions"
+    else
+      info "workflow '$nama' belum terdaftar di Actions — merge ke branch default dulu (batas workflow_dispatch GitHub); sementara pakai: gh workflow run $w --ref <branch>"
+    fi
+  done
+else
+  lewati "gh tidak ada / belum login → secrets & registrasi workflow tidak diperiksa"
+  info "Secrets wajib: $rahasia_wajib (+ salah satu: $rahasia_pilih)"
+  info "Variables wajib: $vars_wajib"
 fi
 
 # ===========================================================================

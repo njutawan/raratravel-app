@@ -33,6 +33,12 @@ dikerjakan dari dalam repo; yang disediakan di sini adalah jalur satu perintah
 untuk tiap poin. Kredensial yang dibutuhkan tiap workflow ada di judul
 workflow-nya (`.github/workflows/deploy-*.yml`).
 
+Bagian terakhir skrip memeriksa **kesiapan deploy**: kedua workflow deploy ada
+dan bisa dipanggil, tidak ada rahasia yang tertanam di dalamnya, serta
+secrets/variables Actions sudah terpasang (bila `gh` tersedia dan tokenmu boleh
+membacanya). Dengan begitu kekurangan kredensial ketahuan **sebelum** workflow
+dijalankan, bukan di tengah jalan.
+
 - [ ] `bash tools/release_gate.sh` → **SEMUA PEMERIKSAAN LOKAL LULUS**
 
 ---
