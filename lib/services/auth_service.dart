@@ -21,6 +21,33 @@ import 'messaging_service.dart';
 class AuthService {
   static FirebaseAuth get _auth => FirebaseAuth.instance;
 
+  /// google_sign_in 7.x: satu instance bersama ([GoogleSignIn.instance]) dan
+  /// wajib di-`initialize()` sekali sebelum dipakai.
+  ///
+  /// Di Android tidak perlu mengirim clientId secara manual selama
+  /// `google-services.json` memuat OAuth client *web* (client_type 3) —
+  /// syarat `serverClientId` untuk memperoleh idToken. Berkas itu sudah ada di
+  /// repo ini; kalau nanti login Google gagal dengan
+  /// `clientConfigurationError`, periksa ulang berkas tersebut.
+  static bool _googleSiap = false;
+
+  static Future<void> _siapkanGoogle() async {
+    if (_googleSiap) return;
+    await GoogleSignIn.instance.initialize();
+    _googleSiap = true;
+  }
+
+  /// Sesi Google dibersihkan saat keluar/hapus akun (HP bisa dipakai bersama).
+  /// Aman walau belum pernah diinisialisasi — jangan sampai logout gagal.
+  static Future<void> _keluarGoogle() async {
+    if (!_googleSiap) return;
+    try {
+      await GoogleSignIn.instance.signOut();
+    } catch (e) {
+      debugPrint('Google signOut dilewati: $e');
+    }
+  }
+
   /// Stream status login (null = tamu). Aman dipanggil walau offline.
   static Stream<User?> authStateChanges() =>
       FirebaseBootstrap.ready ? _auth.authStateChanges() : Stream.value(null);
@@ -102,9 +129,7 @@ class AuthService {
   static Future<void> signOut() async {
     EdgeClient.resetToken(); // token lama tidak boleh dipakai akun berikutnya
     // Bersihkan juga sesi Google (penting di HP yang dipakai bersama).
-    try {
-      await GoogleSignIn().signOut();
-    } catch (_) {}
+    await _keluarGoogle();
     await _auth.signOut();
   }
 
@@ -152,9 +177,7 @@ class AuthService {
     // (2) Akun Firebase — setelah ini token mati, jadi lakukan paling akhir
     // di antara pekerjaan server.
     await user.delete();
-    try {
-      await GoogleSignIn().signOut();
-    } catch (_) {}
+    await _keluarGoogle();
     // (3) Jejak lokal terakhir.
     await BookingStorage.clear();
     EdgeClient.resetToken();
@@ -163,25 +186,55 @@ class AuthService {
   /// Login dengan akun Google. Kembalikan credential,
   /// atau null bila pengguna membatalkan.
   static Future<UserCredential?> signInWithGoogle() async {
-    final googleUser = await GoogleSignIn().signIn();
-    if (googleUser == null) return null; // dibatalkan pengguna
-    final googleAuth = await googleUser.authentication;
-    if (googleAuth.idToken == null && googleAuth.accessToken == null) {
+    await _siapkanGoogle();
+    final akun = await _autentikasiGoogle();
+    if (akun == null) return null; // dibatalkan pengguna
+    // idToken kini diambil langsung (tanpa await).
+    final idToken = akun.authentication.idToken;
+
+    // Cadangan: sejak 7.x accessToken terpisah dari autentikasi (butuh izin
+    // scope). Firebase masih menerima accessToken bila idToken kosong — ambil
+    // hanya bila izinnya sudah pernah diberikan, tanpa memunculkan UI baru.
+    String? accessToken;
+    if (idToken == null) {
+      try {
+        final izin = await akun.authorizationClient
+            .authorizationForScopes(const ['email']);
+        accessToken = izin?.accessToken;
+      } catch (e) {
+        debugPrint('Google authorization dilewati: $e');
+      }
+    }
+
+    if (idToken == null && accessToken == null) {
       // Seharusnya tak terjadi bila google-services.json benar; tanpa token
       // Firebase pasti menolak, jadi gagalkan lebih awal dengan pesan jelas.
       throw StateError('Token Google kosong (konfigurasi client).');
     }
     return _auth.signInWithCredential(
-      GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      ),
+      GoogleAuthProvider.credential(idToken: idToken, accessToken: accessToken),
     );
+  }
+
+  /// 7.x: `authenticate()` menggantikan `signIn()`. Pembatalan pengguna kini
+  /// berupa GoogleSignInException(canceled) — diterjemahkan ke `null` di sini
+  /// supaya pemanggil lama (yang memeriksa null) tidak perlu diubah.
+  static Future<GoogleSignInAccount?> _autentikasiGoogle() async {
+    try {
+      return await GoogleSignIn.instance.authenticate();
+    } on GoogleSignInException catch (e) {
+      if (e.code == GoogleSignInExceptionCode.canceled) return null;
+      rethrow;
+    }
   }
 
   /// True bila error login Google berarti "pengguna membatalkan"
   /// (tombol back di pemilih akun) — jangan hitung sebagai kegagalan.
   static bool isGoogleCancel(Object e) {
+    if (e is GoogleSignInException &&
+        e.code == GoogleSignInExceptionCode.canceled) {
+      return true;
+    }
     if (e is PlatformException && e.code == 'sign_in_canceled') return true;
     final t = e.toString();
     // ApiException 12501 = SIGN_IN_CANCELLED.
@@ -195,6 +248,20 @@ class AuthService {
     debugPrint('Google sign-in error: $e');
     if (e is FirebaseAuthException) return friendlyError(e);
     final text = e.toString();
+    if (e is GoogleSignInException) {
+      switch (e.code) {
+        case GoogleSignInExceptionCode.canceled:
+          return 'Login Google dibatalkan.';
+        case GoogleSignInExceptionCode.clientConfigurationError:
+          // Paling sering: SHA-1 APK belum terdaftar / serverClientId hilang.
+          return 'Login Google gagal: SHA-1 APK belum terdaftar di Firebase. Hubungi admin.';
+        case GoogleSignInExceptionCode.providerConfigurationError:
+        case GoogleSignInExceptionCode.uiUnavailable:
+          return 'Layanan Google Play bermasalah. Update Google Play Services lalu coba lagi.';
+        default:
+          return 'Login Google gagal (${e.code.name}). Coba lagi.';
+      }
+    }
     if (e is PlatformException) {
       if (e.code == 'network_error' ||
           text.contains('ApiException: 7') ||

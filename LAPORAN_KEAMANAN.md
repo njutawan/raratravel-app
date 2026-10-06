@@ -19,7 +19,7 @@ diperbaiki di kode**, 2 butuh tindakan Anda di Firebase Console / terjadwal.
 | M-1 | Backup otomatis Android aktif → data PII plaintext ikut ter-backup cloud | MEDIUM | ✅ Diperbaiki (`allowBackup=false`) |
 | M-2 | Tanpa App Check → API key Firebase bisa dipakai script luar | MEDIUM | ✅ Diperbaiki: aktivasi kode + **enforcement Firestore & Auth dinyalakan** (§5.2) |
 | M-3 | minSdk 23: trafik HTTP polos masih diizinkan di Android 6–7 | MEDIUM | ✅ Diperbaiki (paksa HTTPS) |
-| M-4 | `firebase_auth` 5.x & `google_sign_in` 6.x tertinggal 1 major | MEDIUM | ⏳ Terjadwal (§5.4, butuh uji regresi) |
+| M-4 | `firebase_auth` 5.x & `google_sign_in` 6.x tertinggal 1 major | MEDIUM | ✅ Kode diperbarui ke `firebase_auth` 6.x / `google_sign_in` 7.x — **wajib uji regresi HP** (§5.4) |
 | L-1 | Keluar tidak membersihkan sesi Google (berisiko di HP bersama) | LOW | ✅ Diperbaiki |
 | L-2 | Cloud Function bisa crash saat `userId` kosong; token FCM basi menumpuk | LOW | ✅ Diperbaiki (`functions_sample/`) |
 | L-3 | Diskon promo dihitung di HP (bisa diubah di HP root) | LOW | ℹ️ Risiko diterima (admin verifikasi manual via WA) |
@@ -75,12 +75,27 @@ di Console**. Ikuti §5.2.
 memang hanya memakai URL `https`, tetapi sekarang diperkeras eksplisit:
 `usesCleartextTraffic="false"` + `network_security_config.xml`.
 
-### M-4. SDK Firebase/Google tertinggal 1 major — TERJADWAL
-Terpasang: `firebase_auth ^5.3.0`, `google_sign_in ^6.2.0`. Terbaru per
-Sep 2026: `firebase_auth 6.6.x`, `google_sign_in 7.2.x` (API v7 berubah total:
-`initialize()` + `authenticate()`). Tidak ada CVE spesifik yang saya
-konfirmasi, tetapi SDK lama = patch keamanan berhenti. Upgrade butuh ubah kode
-+ uji di HP fisik — lakukan terjadwal, bukan darurat (§5.4).
+### M-4. SDK Firebase/Google tertinggal 1 major — KODE DIPERBARUI (uji HP tertunda)
+Terpasang sekarang: `firebase_auth ^6.7.0`, `firebase_core ^4.14.0`,
+`cloud_firestore ^6.10.0`, `firebase_messaging ^16.7.0`,
+`firebase_app_check ^0.4.8`, `firebase_crashlytics ^5.4.0`,
+`google_sign_in ^7.2.0` (sebelumnya 5.x/3.x/5.x/15.x/0.3.x/—/6.x).
+
+Yang berubah di kode (bukan hanya versi):
+* `google_sign_in` 7.x memakai pola baru `GoogleSignIn.instance` +
+  `initialize()` (sekali) + `authenticate()`; pembatalan pengguna kini berupa
+  `GoogleSignInException(canceled)`, dan `accessToken` terpisah dari
+  autentikasi. `accessToken` hanya dipakai sebagai **cadangan** bila `idToken`
+  kosong (butuh izin scope `email` yang sudah pernah diberikan — tanpa UI baru).
+* Firebase 6.x/4.x menghapus beberapa fungsi deprecated (`User.updateEmail`,
+  `FirebaseAuth.fetchSignInMethodsForEmail`, `Firestore.enablePersistence`,
+  `Messaging.sendMessage`) — semuanya sudah dicek: **tidak dipakai** aplikasi
+  ini.
+* `idToken` Google berasal dari OAuth client *web* di `google-services.json`
+  (client_type 3) — berkas ini sudah memenuhinya.
+
+Sisa pekerjaan: **uji di HP fisik** (§5.4) karena API Google Sign-In benar-benar
+berubah dan tidak bisa diuji dari CI.
 
 ---
 
@@ -138,10 +153,29 @@ tujuan (fungsionalitas aplikasi), dibagikan ke (Firebase/Google, WhatsApp saat
 user menekan konfirmasi), **penghapusan akun tersedia di dalam aplikasi**
 (Profil → Hapus Akun) ✅.
 
-### 5.4 Upgrade SDK terjadwal (nanti, di HP fisik)
-`flutter pub outdated` → naikkan `firebase_auth ^6.x`, `cloud_firestore ^6.x`,
-`firebase_core ^4.x`, lalu migrasi `google_sign_in ^7.x` (API baru).
-Uji penuh: OTP, Google login, booking, hapus akun.
+### 5.4 Uji regresi SDK baru (WAJIB, di HP fisik)
+
+Kode sudah dinaikkan ke generasi `firebase_core 4.x` (lihat M-4). Pasang APK
+dari *Releases* terbaru, lalu jalankan berurutan — catat hasil per baris:
+
+- [ ] **Login OTP**: kirim kode → SMS masuk → verifikasi → masuk Beranda.
+      (ujar) Kegagalan khas: `INVALID_APP_CREDENTIAL` = SHA-1 APK belum terdaftar.
+- [ ] **Auto-verifikasi** (Android tanpa input kode) tetap jalan.
+- [ ] **Login Google**: tombol Google → pilih akun → masuk. Kalau gagal dengan
+      *"SHA-1 APK belum terdaftar"* padahal sudah terdaftar, cek juga OAuth
+      client **web** (client_type 3) masih ada di `google-services.json`.
+- [ ] **Pesan "dibatalkan"**: tekan back di pemilih akun → tidak dihitung galat.
+- [ ] **Booking**: buat pesanan baru → tersimpan (mode Supabase) + masuk Riwayat.
+- [ ] **Notifikasi**: terima push status pesanan; token FCM tersimpan
+      (Profil → Ringkasan Backend).
+- [ ] **Keluar**: akun Google ikut keluar (coba login Google lagi → diminta pilih akun).
+- [ ] **Hapus Akun**: konfirmasi → data hilang; bila jaringan gagal, akun TIDAK
+      terhapus dan muncul pesan jelas.
+- [ ] **Crashlytics**: picu uji (lihat catatan Crashlytics) → laporan muncul di Console.
+
+Bila ada yang gagal, laporkan gejala + layar mana; rollback cepat: kembalikan
+tujuh baris versi di `pubspec.yaml` ke revisi sebelumnya (mode aplikasi tidak
+berubah, jadi data aman).
 
 ---
 

@@ -186,32 +186,37 @@ Jangan ubah `BOOKING_WRITE=supabase` sebelum **semua** poin ini tercentang
 
 ## 9. Setelah rilis
 
-- [ ] Pantau **Android Vitals** (Play Console: ANR/crash rate) + Logcat/`flutter
-      logs`; balas review pengguna. *(Crashlytics belum dipasang — lihat catatan
-      di bawah.)*
+- [ ] Pantau **Android Vitals** (Play Console: ANR/crash rate) **dan
+      Crashlytics** (Firebase Console → Crashlytics: crash & non-fatal, sudah
+      dipasang — lihat catatan di bawah); balas review pengguna.
 - [ ] Ulangi audit (`AUDIT_RILIS.md`) setiap menambah fitur sensitif / naik
       major SDK.
-- [ ] Upgrade SDK Firebase/Google terjadwal (catatan M-4) — butuh uji regresi
-      OTP, Google login, booking, hapus akun.
+- [ ] **Uji regresi SDK baru di HP** (`LAPORAN_KEAMANAN.md` §5.4): OTP, Google
+      login, booking, notifikasi, keluar, hapus akun, Crashlytics.
 
 ---
 
-## Catatan: Crashlytics (opsional, belum dipasang)
+## Catatan: Crashlytics (SUDAH DIPASANG)
 
-`firebase_crashlytics` **tidak ada** di `pubspec.yaml`, jadi crash pengguna tidak
-terkumpul otomatis — pantauan sementara lewat Android Vitals + laporan manual.
+`firebase_crashlytics` sudah ada di `pubspec.yaml` dan aktif di kode:
+koleksi diaktifkan **hanya di build rilis** (`!kDebugMode`), dan galat fatal dari
+`FlutterError.onError` + `PlatformDispatcher.instance.onError` diteruskan lewat
+`FirebaseBootstrap.catatGalatFatal`. Kartu **Profil → Ringkasan Backend** punya
+baris "Laporan crash" (aktif/nonaktif) untuk memastikan dari HP.
 
-Bila ingin dipasang (disarankan sebelum jumlah pengguna bertambah):
+Cara memverifikasi sekali (butuh ±1 menit):
 
-1. `flutter pub add firebase_crashlytics` (versi 4.x cocok dengan
-   `firebase_core: ^3.6.0`).
-2. `lib/services/firebase_bootstrap.dart`: setelah `Firebase.initializeApp`,
-   `await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(!kDebugMode);`
-   lalu bungkus `runApp` dengan `FlutterError.onError`/`PlatformDispatcher.onError`.
-3. Tambahkan langkah uji di matriks HP (poin 6): picu crash uji → muncul di
-   Crashlytics Console dalam ±1 menit.
-4. Tanpa `--split-debug-info` dari rilis ber-obfuscate, jejaknya bisa dibaca
-   (jalur AAB di poin 3 sudah menghasilkan `symbols-rara-*.zip`).
+1. Pasang APK rilis dari *Releases*, buka aplikasi.
+2. Firebase Console → **Crashlytics** → panel dashboard.
+3. Di HP, setelah beberapa menit pakai aplikasi, laporan crash/ANR pertama akan
+   muncul di tab **Crashes** (tanpa enforcement tambahan di Console).
+4. Untuk uji sengaja (mis. `throw` dari tombol debug), cukup tambahkan
+   `FirebaseCrashlytics.instance.crash()` di build uji — **jangan di rilis**.
+
+Catatan: nomor baris pasti terbaca karena jalur AAB di poin 3 menghasilkan
+`symbols-rara-*.zip` dan plugin Gradle Crashlytics mengunggah peta simbolnya
+otomatis. Kalau log Crashlytics tampak "stack trace tidak jelas" pada build APK
+(mode `--obfuscate`), pakai AAB/Play atau simpan `symbols-*.zip` dari artifact.
 
 ---
 
