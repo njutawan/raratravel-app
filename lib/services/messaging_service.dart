@@ -33,6 +33,23 @@ class MessagingService {
   static const String _appVersion =
       String.fromEnvironment('APP_VERSION', defaultValue: '1.0.0+1');
 
+  /// Versi aplikasi yang sedang berjalan (untuk kartu diagnostik di Profil).
+  static String get appVersion => _appVersion;
+
+  /// Token FCM perangkat ini sudah tersimpan (pernah terdaftar)?
+  ///
+  /// Dipakai kartu "Ringkasan backend" untuk memastikan push notification
+  /// benar-benar siap di HP tempat uji rilis.
+  static Future<bool> tokenTerdaftar() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return (prefs.getString(_tokenKey) ?? '').isNotEmpty;
+    } catch (e) {
+      debugPrint('Baca token FCM gagal: $e');
+      return false;
+    }
+  }
+
   /// Panggil sekali saat start (hanya bila Firebase siap).
   static Future<void> init() async {
     try {

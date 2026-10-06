@@ -91,6 +91,12 @@ spam OTP (biaya SMS) dan spam database.
 
 Aplikasi **hanya** menampilkan tombol pembayaran bila build memakai
 `PAYMENTS_ENABLED=true` **dan** Supabase terkonfigurasi (URL + anon key).
+Kunci yang diisi boleh kunci model baru **`sb_publishable_…`** (sama amannya
+dengan `anon` lama) — asal **bukan** `service_role`/`sb_secret_…`.
+
+> Cara memastikan tanpa buka kode: buka **Profil → Ringkasan Backend** di HP
+> yang memakai APK itu. Baris *Supabase* harus **tersambung** dan *Pembayaran
+> online* harus **AKTIF** (tombol *Salin ringkasan* untuk dilaporkan ke tim).
 
 - [ ] Isi **Settings → Secrets and variables → Actions → Variables**:
       `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `CATALOG_SOURCE=supabase`,
@@ -106,6 +112,8 @@ Aplikasi **hanya** menampilkan tombol pembayaran bila build memakai
       **sandbox** dulu, lalu produksi.
 - [ ] Uji end-to-end di HP: buat pesanan → **Bayar Sekarang** → tautan Midtrans
       terbuka → bayar (sandbox) → status pesanan jadi **Lunas**.
+- [ ] Cek **Profil → Ringkasan Backend**: Supabase *tersambung*, Pembayaran
+      *AKTIF*, Notifikasi (FCM) *terdaftar*.
 - [ ] Uji jalur transfer manual: **Unggah Bukti Transfer** (galeri/kamera) →
       kirim ke admin via WA → staf menandai lunas lewat `payment-intent`.
 - [ ] Cek bukti transfer **tidak bisa** dibuka orang lain (bucket privat:
@@ -167,3 +175,16 @@ Jangan ubah `BOOKING_WRITE=supabase` sebelum **semua** poin ini tercentang
       major SDK.
 - [ ] Upgrade SDK Firebase/Google terjadwal (catatan M-4) — butuh uji regresi
       OTP, Google login, booking, hapus akun.
+
+---
+
+## Catatan: kuota Actions
+
+Setiap push ke branch menjalankan **Build APK** (menit Flutter) dan
+**Backend check** (PostgreSQL + emulator Firestore). Agar hemat kuota:
+
+- Job *Aturan Firestore (emulator)* hanya jalan bila `firestore.rules`,
+  `firebase.json`, `tools/firestore/**`, atau workflow-nya berubah.
+- Untuk build APK sekali jalan tanpa push: `gh workflow run build-apk.yml`.
+- Riwayat pemakaian: **Settings → Billing → Actions usage** (atau
+  `gh api /repos/{owner}/{repo}/actions/runs --paginate` lalu lihat `run_started_at`).
