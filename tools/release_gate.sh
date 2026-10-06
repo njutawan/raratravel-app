@@ -12,7 +12,7 @@
 #   3. Migrasi: 12 berkas + uji perilaku + kecocokan 31 RPC (PostgreSQL 16 asli)
 #   4. firestore.rules: emulator (bila Java ada) atau status job CI
 #   5. Keystore debug: SHA-1/256 cocok dengan SHA_FINGERPRINTS.txt + google-services.json
-#   6. Artefak rilis: DATA_SAFETY.md, halaman hapus akun, .firebaserc, versi aplikasi
+#   6. Artefak rilis: DATA_SAFETY.md, halaman hapus akun (syarat Play), .firebaserc
 #   7. Kesiapan deploy: workflow deploy ada + secrets/variables Actions terpasang
 #
 # Keluar 0 bila semua pemeriksaan lokal lulus. Bagian yang butuh Console/kredensial
@@ -226,6 +226,36 @@ for f in DATA_SAFETY.md docs/hapus-akun.html RILIS_PRODUKSI.md LAPORAN_KEAMANAN.
          AUDIT_RILIS.md MIGRASI_SUPABASE.md PANDUAN_BUILD_APK.md; do
   [ -f "$f" ] && ok "$f" || tolak "$f belum ada"
 done
+
+# Halaman hapus akun dinilai Play secara manual: harus menyebut nama aplikasi,
+# memberi kanal kontak, dan terbuka tanpa error. Sumber eksternal (CDN, font,
+# gambar) adalah cara termudah membuat halaman itu gagal dibuka reviewer.
+halaman="docs/hapus-akun.html"
+if [ -f "$halaman" ]; then
+  if grep -q 'Rara Travel' "$halaman"; then
+    ok "halaman hapus akun menyebut nama aplikasi"
+  else
+    tolak "halaman hapus akun tidak menyebut nama aplikasi (Play bisa menolaknya)"
+  fi
+  if grep -q 'mailto:' "$halaman" || grep -q 'wa\.me' "$halaman"; then
+    ok "halaman hapus akun punya kanal kontak (email / WhatsApp)"
+  else
+    tolak "halaman hapus akun tanpa kanal kontak — permintaan penghapusan tidak bisa masuk"
+  fi
+  eksternal="$(grep -oE '<(script|link|img)[^>]*(src|href)="https?://[^"]+"' "$halaman" || true)"
+  if [ -n "$eksternal" ]; then
+    tolak "halaman hapus akun memuat sumber eksternal:"
+    printf '%s\n' "$eksternal" | sed 's/^/      /'
+  else
+    ok "halaman hapus akun mandiri (tanpa script/css/gambar dari luar)"
+  fi
+  if grep -q 'http://' "$halaman"; then
+    tolak "ada tautan http:// (tidak terenkripsi) di halaman hapus akun"
+  else
+    ok "tautan di halaman hapus akun semuanya https/mailto"
+  fi
+fi
+
 versi="$(sed -n 's/^version: *//p' pubspec.yaml | head -1)"
 info "versi aplikasi: ${versi:-?}"
 proyek="$(python3 -c 'import json;print((json.load(open(".firebaserc")).get("projects") or {}).get("default",""))' 2>/dev/null || echo '')"
