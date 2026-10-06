@@ -59,7 +59,16 @@ jobs:
       # Gerbang cepat: galat kode ketahuan sebelum Gradle jalan, dan pesannya
       # muncul di log CI. Peringatan/informasi tidak menggagalkan build.
       - name: flutter analyze (galat kode saja)
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+        run: |
+          set +e
+          flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 | tee /tmp/analyze.log
+          STATUS=${PIPESTATUS[0]}
+          set -e
+          if [ "$STATUS" -ne 0 ]; then
+            echo "::error title=Galat analisis kode::$(grep -iE 'error' /tmp/analyze.log | tail -8 | tr '\n' '~' | cut -c1-1200)"
+            echo "::error title=Ekor analisis::$(tail -12 /tmp/analyze.log | tr '\n' '~' | cut -c1-1200)"
+          fi
+          exit "$STATUS"
 
       - name: Baca versi aplikasi (pubspec.yaml)
         id: ver
