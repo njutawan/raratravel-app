@@ -275,7 +275,7 @@ class ProfileScreen extends StatelessWidget {
           const SizedBox(height: 16),
           Center(
             child: Text(
-              'Rara Travel App v1.0.0 • raratravel.id',
+              'Rara Travel App v${MessagingService.appVersion} • raratravel.id',
               style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
             ),
           ),

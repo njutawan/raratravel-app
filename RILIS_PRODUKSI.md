@@ -186,11 +186,32 @@ Jangan ubah `BOOKING_WRITE=supabase` sebelum **semua** poin ini tercentang
 
 ## 9. Setelah rilis
 
-- [ ] Crashlytics + pantau Android Vitals/ANR, balas review pengguna.
+- [ ] Pantau **Android Vitals** (Play Console: ANR/crash rate) + Logcat/`flutter
+      logs`; balas review pengguna. *(Crashlytics belum dipasang — lihat catatan
+      di bawah.)*
 - [ ] Ulangi audit (`AUDIT_RILIS.md`) setiap menambah fitur sensitif / naik
       major SDK.
 - [ ] Upgrade SDK Firebase/Google terjadwal (catatan M-4) — butuh uji regresi
       OTP, Google login, booking, hapus akun.
+
+---
+
+## Catatan: Crashlytics (opsional, belum dipasang)
+
+`firebase_crashlytics` **tidak ada** di `pubspec.yaml`, jadi crash pengguna tidak
+terkumpul otomatis — pantauan sementara lewat Android Vitals + laporan manual.
+
+Bila ingin dipasang (disarankan sebelum jumlah pengguna bertambah):
+
+1. `flutter pub add firebase_crashlytics` (versi 4.x cocok dengan
+   `firebase_core: ^3.6.0`).
+2. `lib/services/firebase_bootstrap.dart`: setelah `Firebase.initializeApp`,
+   `await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(!kDebugMode);`
+   lalu bungkus `runApp` dengan `FlutterError.onError`/`PlatformDispatcher.onError`.
+3. Tambahkan langkah uji di matriks HP (poin 6): picu crash uji → muncul di
+   Crashlytics Console dalam ±1 menit.
+4. Tanpa `--split-debug-info` dari rilis ber-obfuscate, jejaknya bisa dibaca
+   (jalur AAB di poin 3 sudah menghasilkan `symbols-rara-*.zip`).
 
 ---
 
