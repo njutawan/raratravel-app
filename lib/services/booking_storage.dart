@@ -94,11 +94,9 @@ class BookingStorage {
       await prefs.setStringList(_dirtySbKey, list);
     }
     if (idempotencyKey != null && idempotencyKey.isNotEmpty) {
-      final keys = Map<String, String>.from(
-        prefs.getStringMap(_outboxKeyKey) ?? const {},
-      );
-      keys[kode] = idempotencyKey;
-      await prefs.setStringMap(_outboxKeyKey, keys);
+      // SharedPreferences hanya menyimpan tipe primitif — kunci disimpan
+      // per-pesanan dengan awalan tetap.
+      await prefs.setString('$_outboxKeyKey:$kode', idempotencyKey);
     }
   }
 
@@ -106,10 +104,7 @@ class BookingStorage {
     final prefs = await SharedPreferences.getInstance();
     final list = prefs.getStringList(_dirtySbKey) ?? [];
     if (list.remove(kode)) await prefs.setStringList(_dirtySbKey, list);
-    final keys = Map<String, String>.from(
-      prefs.getStringMap(_outboxKeyKey) ?? const {},
-    );
-    if (keys.remove(kode) != null) await prefs.setStringMap(_outboxKeyKey, keys);
+    await prefs.remove('$_outboxKeyKey:$kode');
   }
 
   static Future<List<String>> dirtySbCodes() async {
@@ -120,7 +115,7 @@ class BookingStorage {
   /// Kunci idempotency yang dipakai saat pesanan pertama kali dikirim.
   static Future<String?> idempotencyKeyFor(String kode) async {
     final prefs = await SharedPreferences.getInstance();
-    return (prefs.getStringMap(_outboxKeyKey) ?? const {})[kode];
+    return prefs.getString('$_outboxKeyKey:$kode');
   }
 
   // ---------- Riwayat ----------

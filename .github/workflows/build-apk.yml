@@ -64,7 +64,34 @@ jobs:
           echo "Versi aplikasi: ${VERSION:-dev}"
 
       - name: flutter build apk --release
-        run: flutter build apk --release
+        # Supabase bersifat opsional: isi Repository variables berikut agar APK
+        # hasil CI memakai backend baru (Settings → Secrets and variables →
+        # Actions → Variables). Dibiarkan kosong = mode lokal/Firestore seperti
+        # sebelumnya, jadi perilaku APK tidak berubah tanpa setelan ini.
+        #   SUPABASE_URL, SUPABASE_ANON_KEY   (wajib untuk mengaktifkan)
+        #   CATALOG_SOURCE  local | supabase
+        #   BOOKING_WRITE   dual | supabase | firestore
+        #   PAYMENTS_ENABLED  true | false
+        env:
+          SB_URL: ${{ vars.SUPABASE_URL }}
+          SB_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+          SB_CATALOG: ${{ vars.CATALOG_SOURCE }}
+          SB_BOOKING: ${{ vars.BOOKING_WRITE }}
+          SB_PAYMENTS: ${{ vars.PAYMENTS_ENABLED }}
+        run: |
+          DEFINES=()
+          if [ -n "$SB_URL" ]; then DEFINES+=("--dart-define=SUPABASE_URL=$SB_URL"); fi
+          if [ -n "$SB_KEY" ]; then DEFINES+=("--dart-define=SUPABASE_ANON_KEY=$SB_KEY"); fi
+          if [ -n "$SB_CATALOG" ]; then DEFINES+=("--dart-define=CATALOG_SOURCE=$SB_CATALOG"); fi
+          if [ -n "$SB_BOOKING" ]; then DEFINES+=("--dart-define=BOOKING_WRITE=$SB_BOOKING"); fi
+          if [ -n "$SB_PAYMENTS" ]; then DEFINES+=("--dart-define=PAYMENTS_ENABLED=$SB_PAYMENTS"); fi
+          if [ ${#DEFINES[@]} -eq 0 ]; then
+            echo "Tanpa dart-define dari repo — mode lokal/Firestore seperti biasa."
+          else
+            printf '%s\n' "${DEFINES[@]}" \
+              | sed 's|^--dart-define=SUPABASE_ANON_KEY=.*|--dart-define=SUPABASE_ANON_KEY=***|'
+          fi
+          flutter build apk --release "${DEFINES[@]}"
 
       - name: Cetak SHA penanda tangan APK (untuk Firebase)
         run: |

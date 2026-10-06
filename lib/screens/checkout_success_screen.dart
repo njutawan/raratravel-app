@@ -12,6 +12,7 @@ import '../widgets/adaptive.dart';
 import '../widgets/common_widgets.dart';
 import 'booking_screen.dart';
 import 'orders_screen.dart';
+import 'payment_sheet.dart';
 import 'rental_screen.dart';
 import 'wisata_screen.dart';
 
@@ -165,6 +166,12 @@ class CheckoutSuccessScreen extends StatelessWidget {
                   InfoRow(label: 'Antar', value: b.antar),
                   InfoRow(label: 'Kursi', value: '${b.kursi} kursi'),
                   InfoRow(label: 'Pembayaran', value: b.metodeBayar),
+                  if (b.paymentStatus.isNotEmpty)
+                    InfoRow(
+                      label: 'Status Bayar',
+                      value: PaymentStatus.label(b.paymentStatus),
+                      boldValue: true,
+                    ),
                   if (b.catatan.isNotEmpty)
                     InfoRow(label: 'Catatan', value: b.catatan),
                   const Divider(height: 20),
@@ -191,6 +198,19 @@ class CheckoutSuccessScreen extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
+          // Bayar online (bila build mengaktifkan pembayaran & pesanan sudah
+          // ada di server). Tanpa ini, tinggal konfirmasi via WhatsApp.
+          if (PaymentRepository.enabled && b.id.isNotEmpty && !b.sudahDibayar) ...[
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => PaymentSheet.show(context, b),
+                icon: const Icon(Icons.payment),
+                label: Text('Bayar Sekarang • ${Formatters.idr(b.totalHarga)}'),
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(

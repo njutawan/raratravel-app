@@ -244,10 +244,14 @@ class _BookingScreenState extends State<BookingScreen> {
     );
   }
 
-  /// Server tidak terjangkau (bukan menolak pesanan): jaringan mati / timeout.
-  /// Pesanan tetap boleh lanjut lewat jalur lokal + konfirmasi WA.
+  /// Server tidak terjangkau (bukan menolak pesanan): jaringan mati, timeout,
+  /// atau backend belum siap (5xx / belum dikonfigurasi). Pesanan tetap boleh
+  /// lanjut lewat jalur lokal + konfirmasi WA, sinkron menyusul via outbox.
   static bool _bisaLanjutOffline(ApiException e) =>
-      e.code == 'network_error' || e.code == 'timeout';
+      e.code == 'network_error' ||
+      e.code == 'timeout' ||
+      e.code == 'not_configured' ||
+      e.status >= 500;
 
   /// Harga berubah di server (mis. admin memperbarui tarif). Tawarkan hitung
   /// ulang supaya pengguna tidak membayar dengan angka lama.

@@ -6,6 +6,7 @@ import '../config/backend_config.dart';
 import '../models/booking.dart';
 import '../models/booking_status.dart';
 import '../repositories/booking_repository.dart';
+import '../repositories/payment_repository.dart';
 import '../services/auth_service.dart';
 import '../services/booking_storage.dart';
 import '../services/edge_client.dart';
@@ -17,6 +18,7 @@ import '../utils/formatters.dart';
 import '../widgets/adaptive.dart';
 import '../widgets/common_widgets.dart';
 import 'login_carousel_screen.dart';
+import 'payment_sheet.dart';
 import 'search_screen.dart';
 
 /// Riwayat pesanan.
@@ -230,6 +232,21 @@ class _OrdersScreenState extends State<OrdersScreen> {
               ),
             ),
             const SizedBox(height: 16),
+            if (PaymentRepository.enabled && b.id.isNotEmpty && !b.sudahDibayar) ...[
+              FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(44),
+                ),
+                onPressed: () async {
+                  Navigator.pop(context); // tutup detail
+                  await PaymentSheet.show(context, b);
+                  if (mounted) _refresh();
+                },
+                icon: const Icon(Icons.payment),
+                label: const Text('Bayar / Cek Pembayaran'),
+              ),
+              const SizedBox(height: 8),
+            ],
             FilledButton.icon(
               style: FilledButton.styleFrom(backgroundColor: AppTheme.waGreen),
               onPressed: () =>

@@ -19,6 +19,7 @@ riwayat pesanan offline, dan konfirmasi otomatis via WhatsApp admin
 | 📄 Detail Rute | Jadwal, armada, fasilitas, deskripsi, pilih tanggal & jam |
 | 📝 Booking | Form nama, WA, alamat jemput/antar, jumlah kursi, metode bayar, hitung total otomatis |
 | 🎫 Tiket | Kode booking unik + tombol **konfirmasi via WhatsApp** (pesan terisi otomatis) |
+| 💳 Pembayaran | Cek tagihan (total/dibayar/sisa) + riwayat, bayar online (QRIS/VA/e-wallet via Midtrans) atau transfer manual — aktif hanya bila build memakai `PAYMENTS_ENABLED=true` |
 | 🧾 Pesananku | Riwayat tersimpan di HP (offline), detail, batalkan, hapus |
 | 🚗 Sewa Mobil | Calya–Elf Long, harga +sopir & lepas kunci, pesan via WA |
 | 🏝️ Paket Wisata | Bromo, Ijen, Bali, Nusa Penida, Papuma + tombol tanya via WA |
@@ -108,7 +109,17 @@ flutter run --dart-define=SUPABASE_URL=https://PROJECT.supabase.co `
 
 Selama `BOOKING_WRITE=dual`, pesanan **tetap** ditulis ke Firestore sehingga
 tidak ada risiko kehilangan data; penulisan itu baru dimatikan (`supabase`)
-setelah seluruh langkah migrasi lolos checklist.
+setelah seluruh langkah migrasi lolos checklist. Pesanan yang gagal terkirim
+saat booking (jaringan putus / server baru belum siap) disimpan lebih dulu di
+HP lalu dikirim menyusul saat login berikutnya — outbox `rara_dirty_sb_v1`.
+
+**Pembayaran online** (tombol "Bayar Sekarang" di tiket & detail pesanan)
+muncul bila `PAYMENTS_ENABLED=true` **dan** `SUPABASE_URL`/`SUPABASE_ANON_KEY`
+terisi. Untuk APK hasil CI, isi **Settings → Secrets and variables → Actions →
+Variables**: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, lalu opsional
+`CATALOG_SOURCE`, `BOOKING_WRITE`, `PAYMENTS_ENABLED` (lihat
+`.github/workflows/build-apk.yml`). Dibiarkan kosong = APK tetap memakai
+katalog lokal + Firestore seperti sebelumnya.
 
 Berkas terkait:
 
