@@ -134,13 +134,35 @@ void main() {
     test('fromMap toleran terhadap field hilang / tipe salah', () {
       final b = Booking.fromMap({
         'kode': 'RARA-TAHAN1',
-        'kursi': '3', // string, bukan angka
-        'totalHarga': null,
+        'kursi': '3', // teks angka
+        'totalHarga': null, // kosong
+        'diskon': 'abc', // bukan angka sama sekali
       });
       expect(b.kursi, 3);
       expect(b.totalHarga, 0);
+      expect(b.diskon, 0);
       expect(b.status, 'Menunggu Konfirmasi');
       expect(b.createdAt, isNotEmpty);
+    });
+
+    test('fromMap menerima angka desimal pada field rupiah', () {
+      final b = Booking.fromMap({
+        'kode': 'RARA-TAHAN2',
+        'totalHarga': 900000.0,
+        'diskon': 50000.75,
+      });
+      expect(b.totalHarga, 900000);
+      expect(b.diskon, 50000); // dibulatkan ke bawah (toInt)
+    });
+
+    test('fromApi toleran bila jumlah kursi dikirim sebagai teks', () {
+      final b = Booking.fromApi({
+        'kode': 'RARA-TAHAN3',
+        'seats': '4',
+        'total': '360000',
+      });
+      expect(b.kursi, 4);
+      expect(b.totalHarga, 360000);
     });
 
     test('pesan WhatsApp memuat kode, rute, dan promo', () {
