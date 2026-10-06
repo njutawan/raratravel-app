@@ -106,9 +106,12 @@ dengan `anon` lama) — asal **bukan** `service_role`/`sb_secret_…`.
       `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `CATALOG_SOURCE=supabase`,
       `BOOKING_WRITE=dual`, `PAYMENTS_ENABLED=true`.
       Cara satu perintah (Windows):
-      `.	ools\set_actions_variables.ps1 -Build`; (Linux/macOS/Git Bash):
+      `.\tools\set_actions_variables.ps1 -Build`; (Linux/macOS/Git Bash):
       `bash tools/set_actions_variables.sh --build`.
       Perintah itu menolak kunci rahasia (`service_role`) supaya tidak ikut ke APK.
+      Untuk memastikan URL + kunci benar-benar diterima proyek (sebelum menunggu
+      build): `bash tools/set_actions_variables.sh --url … --key … --verify` —
+      bila kunci ditolak, variables tidak diubah sama sekali.
 - [ ] Jalankan ulang *Build APK* lalu buka **ringkasan workflow** → tabel
       **“Mode backend APK ini”** harus menulis `Pembayaran online: AKTIF`.
       Kalau masih *nonaktif*, tombol Bayar Sekarang tidak akan muncul di APK.
