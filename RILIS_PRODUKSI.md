@@ -66,9 +66,13 @@ spam OTP (biaya SMS) dan spam database.
       **Kalau lupa, login Google & App Check versi Play Store akan rusak.**
 - [ ] Unduh ulang `google-services.json` setelah menambah sidik jari, timpa di
       `android/app/`, lalu commit (tanpa ini Firebase masih menolak login).
-- [ ] Ganti APK debug-key dengan AAB bertanda tangan rilis
-      (`PANDUAN_BUILD_APK.md` §7: `--obfuscate --split-debug-info`), simpan
-      `symbols-*.zip` per versi.
+- [ ] Ganti APK debug-key dengan AAB bertanda tangan rilis. Jalur CI sekali
+      saja: `bash tools/set_keystore_secrets.sh --keystore <file.jks> --alias
+      rara-travel`, lalu **Actions → Build APK → Run workflow → centang `aab`**
+      dan unduh artifact `RaraTravel-v…-release-aab` (`app-release.aab` +
+      `symbols-rara-*.zip`); alternatif lokal `flutter build appbundle
+      --release --obfuscate --split-debug-info` (`PANDUAN_BUILD_APK.md` §3c/§7).
+- [ ] Simpan `symbols-*.zip` per versi (untuk membaca crash rilis ter-obfuscate).
 - [ ] Naikkan `versionCode` di `pubspec.yaml` setiap upload.
 
 ---

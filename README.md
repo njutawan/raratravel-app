@@ -138,6 +138,7 @@ Berkas terkait:
 | `tools/set_actions_variables.sh` | isi *Repository variables* sekali jalan (`--check`, `--build`) — inilah yang menyalakan tombol pembayaran di APK. Versi Windows: `tools/set_actions_variables.ps1` |
 | `tools/firestore/rules_test.mjs` | 13 uji keamanan `firestore.rules` di Firestore Emulator (H-1: titip pesanan ke akun lain, alih kepemilikan, dll.) |
 | `tools/check_firestore_rules.sh` | jalankan uji rules di komputer sendiri (butuh Java; CI sudah menjalankannya otomatis) |
+| `tools/set_keystore_secrets.sh` | simpan keystore rilis ke GitHub Secrets agar CI bisa membangun AAB bertanda tangan untuk Play (padanan Windows: `.ps1`) |
 
 Uji backend tanpa Docker/Supabase CLI (butuh Python 3 + `pgserver`):
 
