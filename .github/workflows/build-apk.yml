@@ -58,7 +58,19 @@ jobs:
 
       # Unit test (format harga/tanggal, model pesanan & status).
       - name: flutter test
-        run: flutter test
+        run: |
+          set +e
+          # -r expanded: setiap test dicetak saat berjalan → nama yang gagal
+          # mudah diangkat ke anotasi.
+          flutter test -r expanded > /tmp/test.log 2>&1
+          STATUS=$?
+          tail -40 /tmp/test.log
+          set -e
+          if [ "$STATUS" -ne 0 ]; then
+            RINGKAS="$(grep -E '\[E\]|Expected:|Actual:|Which:|Test failed' /tmp/test.log | head -10 | tr '\n' '~' | cut -c1-1400)"
+            echo "::error title=Test gagal::${RINGKAS:-tidak terdeteksi}"
+          fi
+          exit "$STATUS"
 
       # Gerbang cepat: galat kode ketahuan sebelum Gradle jalan, dan pesannya
       # muncul di log CI. Peringatan/informasi tidak menggagalkan build.
