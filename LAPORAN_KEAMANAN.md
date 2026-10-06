@@ -15,6 +15,7 @@ diperbaiki di kode**, 2 butuh tindakan Anda di Firebase Console / terjadwal.
 |----|--------|-------|--------|
 | H-1 | Rules Firestore: user bisa titip pesanan ke akun orang lain & alih kepemilikan | HIGH | ✅ Diperbaiki (`firestore.rules`) — **wajib Publish ulang, §5.1** |
 | H-2 | Tanpa fitur hapus akun (syarat wajib Play Store untuk aplikasi login) | HIGH | ✅ Diperbaiki (tombol Hapus Akun di Profil) |
+| H-3 | "Hapus Akun" hanya membersihkan Firebase — profil, pesanan, pembayaran, dan **berkas bukti transfer di Supabase tetap tersimpan** | HIGH | ✅ Diperbaiki: Edge Function `auth-user-sync` aksi `purge` + RPC `purge_user_data` (migrasi 0010), diuji di DB & e2e |
 | M-1 | Backup otomatis Android aktif → data PII plaintext ikut ter-backup cloud | MEDIUM | ✅ Diperbaiki (`allowBackup=false`) |
 | M-2 | Tanpa App Check → API key Firebase bisa dipakai script luar | MEDIUM | ✅ Diperbaiki: aktivasi kode + **enforcement Firestore & Auth dinyalakan** (§5.2) |
 | M-3 | minSdk 23: trafik HTTP polos masih diizinkan di Android 6–7 | MEDIUM | ✅ Diperbaiki (paksa HTTPS) |
@@ -94,7 +95,14 @@ L-2 function sampel kini guard `userId` kosong + pruning token FCM invalid.
 - ❌ Tidak ada `google-services.json` / `.jks` / `key.properties` di repo (gitignore benar)
 - ✅ Izin Android minimal (hanya `INTERNET`); tanpa deep-link; satu activity exported (launcher, wajar)
 - ✅ Kode booking memakai `Random.secure()` 32⁶ ≈ 1 miliar kombinasi — tak bisa ditebak
-- ✅ Validasi input form (nama, no. HP, alamat, OTP 6 digit) + cooldown kirim-ulang 60 dtk + throttling server Firebase
+- ✅ Validasi input form (nama, no. HP, alamat, OTP 6 digit) + cooldown kirim-ulang 60 dtk di aplikasi
+- ✅ Firebase Auth sendiri membatasi permintaan SMS berlebih (`too-many-requests`, kuota harian per proyek)
+- ⚠️ **Koreksi klaim lama**: "throttling server Firebase" lewat koleksi `rateLimits`
+  (`functions_sample/`) **tidak berada di jalur permintaan aplikasi** — aplikasi
+  tidak memanggil Cloud Functions sama sekali (tidak ada `cloud_functions` di
+  `pubspec.yaml`). Cooldown 60 dtk murni di sisi klien, jadi klien yang dimodifikasi
+  bisa mengabaikannya. Perlindungan nyatanya: **App Check enforcement** (§5.2) +
+  **SMS region policy & kuota** Firebase Console (lihat RILIS_PRODUKSI.md poin 2).
 - ✅ Tidak ada log data sensitif (`debugPrint` hanya pesan status, nonaktif di release)
 - ✅ `openLink` hanya dipanggil dengan URL konstanta resmi (web + sosmed)
 - ✅ Pesan error ramah, tidak membocorkan detail teknis (hanya kode error standar)
@@ -159,7 +167,8 @@ ada layar "lupa password" — sebagai gantinya dipasang rate-limit:
 - **Google** (`login_carousel_screen.dart`): 3x gagal beruntun (di luar
   pembatalan user & gangguan jaringan) → tombol dikunci 5 menit dengan
   hitung mundur.
-- Firebase tetap menjadi throttling lapis server (`too-many-requests`).
+- Firebase tetap menjadi throttling lapis server (`too-many-requests` + kuota SMS),
+  diperkuat App Check (§5.2) dan pembatasan region SMS di Console.
 
 *Disusun otomatis dari audit kode. Simpan file ini sebagai bukti due-diligence
 keamanan sebelum rilis Play Store.*

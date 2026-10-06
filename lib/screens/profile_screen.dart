@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../config/backend_config.dart';
 import '../services/whatsapp_service.dart';
 import '../services/auth_service.dart';
+import '../services/edge_client.dart';
 import '../services/firebase_bootstrap.dart';
 import '../services/messaging_service.dart';
 import '../services/preferences_service.dart';
@@ -320,6 +321,10 @@ class _AccountCard extends StatelessWidget {
           const SnackBar(content: Text('Akun & seluruh data dihapus.')),
         );
       }
+    } on ApiException catch (e) {
+      // Mis. data server belum terhapus → akun sengaja TIDAK dihapus.
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     } on FirebaseAuthException catch (e) {
       if (!context.mounted) return;
       final msg = e.code == 'requires-recent-login'

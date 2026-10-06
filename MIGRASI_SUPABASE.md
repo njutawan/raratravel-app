@@ -34,7 +34,7 @@ PostgreSQL (Supabase) tanpa mengganggu aplikasi yang sudah dipakai pelanggan.
 | 12 | Matikan penulisan booking ke Firestore | `--dart-define=BOOKING_WRITE=supabase` | ⛔ **belum** (lihat §8) |
 
 Uji lokal yang sudah dijalankan: `tools/e2e/run_e2e.mts` (18 skenario, termasuk
-penerimaan kunci Supabase model baru) + `tools/db_smoke_test.sql` (17 kelompok uji)
+penerimaan kunci Supabase model baru) + `tools/db_smoke_test.sql` (18 kelompok uji)
 hijau di PostgreSQL 16 untuk seluruh migrasi `0000`–`0009`.
 
 ---
@@ -105,7 +105,7 @@ bash tools/setup_supabase.sh --step 4 8   # hanya langkah tertentu
 | 1 | periksa CLI + isi `.env.supabase` | — |
 | 2 | login ke Supabase | `supabase login` |
 | 3 | sambungkan proyek | `supabase link --project-ref <ref>` |
-| 4 | terapkan 11 migrasi | `supabase db push --linked` |
+| 4 | terapkan 12 migrasi | `supabase db push --linked` |
 | 5 | kirim secrets | `supabase secrets set …` (§3) |
 | 6 | deploy 10 Edge Function | `supabase functions deploy <nama>` (§4) |
 | 7 | `pg_net` + `app.settings.notify_*` | tempel SQL di SQL Editor (§4) |
@@ -134,7 +134,7 @@ Dua skrip Windows membuat jalur ini jauh lebih ringkas (jalankan dari akar repo
 di PowerShell):
 
 ```powershell
-# 1) memandu menempel 11 migrasi: salin otomatis + tunggu Enter tiap berkas
+# 1) memandu menempel 12 migrasi: salin otomatis + tunggu Enter tiap berkas
 .\tools\paste_migrations.ps1
 
 # 2) memeriksa hasilnya kapan saja (tabel, RPC katalog, Storage, 10 fungsi)
@@ -150,7 +150,7 @@ dipakai di skrip otomatis (mis. GitHub Actions self-hosted / Task Scheduler).
 sudah memuat `_shared/*.ts` di dalamnya, sehingga bisa ditempel di editor
 Dashboard yang hanya menerima satu berkas. Jangan diedit manual; bila kode
 fungsi berubah, buat ulang dengan `node tools/bundle_functions.js`
-(berkas ini teruji: 18/18 skenario e2e lulus memakai bundel tersebut).
+(berkas ini teruji: 19/19 skenario e2e lulus memakai bundel tersebut).
 
 > **Tips Windows (PowerShell)** — menyalin isi berkas langsung ke papan klip:
 > ```powershell
@@ -469,7 +469,7 @@ Tiga tingkat pemeriksaan, semuanya jalan di laptop:
 ```bash
 python3 -m venv /tmp/venv
 /tmp/venv/bin/pip install pgserver "psycopg[binary]"   # sekali saja
-/tmp/venv/bin/python tools/db_check.py   # migrasi + 17 kelompok uji database + kecocokan RPC
+/tmp/venv/bin/python tools/db_check.py   # migrasi + 18 kelompok uji database + kecocokan RPC
 node tools/ts_check.js                   # impor relatif + nama ekspor Edge Function
 node tools/e2e/run_e2e.mts               # Edge Function DIJALANKAN (18 skenario)
 ```
@@ -647,11 +647,11 @@ Promo `RARAHEMAT`: potongan 10%, maksimal Rp50.000.
 | `supabase/functions/README.md` | daftar Edge Function + contoh panggilan |
 | `tools/setup_supabase.sh` | penyiapan proyek via CLI: migrasi, secrets, deploy, verifikasi |
 | `supabase/deploy-dashboard/*.ts` | 10 fungsi siap tempel untuk Dashboard (hasil bundel) |
-| `tools/paste_migrations.ps1` | panduan Windows: salin 11 migrasi ke papan klip satu per satu |
+| `tools/paste_migrations.ps1` | panduan Windows: salin 12 migrasi ke papan klip satu per satu |
 | `tools/verify_supabase.ps1` | pemeriksa kesiapan proyek (REST, migrasi, Storage, 10 fungsi) |
 | `tools/bundle_functions.js` | membuat ulang berkas siap tempel |
 | `.env.supabase.example` | contoh setelan lokal (salin jadi `.env.supabase`) |
-| `tools/db_smoke_test.sql` | 17 kelompok uji database (jalankan lokal) |
+| `tools/db_smoke_test.sql` | 18 kelompok uji database (jalankan lokal) |
 | `tools/generate_catalog_seed.py` | membuat ulang seed katalog dari `dummy_data.dart` |
 | `lib/config/backend_config.dart` | sakelar migrasi di sisi aplikasi |
 | `lib/repositories/*.dart` | jembatan aplikasi → Edge Function |

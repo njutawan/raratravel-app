@@ -86,7 +86,7 @@ Langkah bergambarnya (termasuk tips PowerShell) ada di `MIGRASI_SUPABASE.md` §2
 Di Windows ada dua pembantu:
 
 ```powershell
-.\tools\paste_migrations.ps1                              # panduan menempel 11 migrasi
+.\tools\paste_migrations.ps1                              # panduan menempel 12 migrasi
 .\tools\verify_supabase.ps1 -AnonKey "<kunci publik>"      # periksa kesiapan proyek
 ``` Jangan commit key ke repository — konfigurasi
 aplikasi diberikan saat build:
@@ -130,7 +130,7 @@ Berkas terkait:
 | `supabase/deploy-dashboard/` | 10 Edge Function siap tempel untuk Dashboard (tanpa CLI) |
 | `tools/verify_supabase.ps1` | pemeriksa kesiapan proyek Supabase (Windows) |
 | `.env.supabase.example` | contoh setelan lokal (salin jadi `.env.supabase`, jangan di-commit) |
-| `supabase/migrations/*.sql` | 11 berkas migrasi (skema, RPC, trigger, seed, storage, admin) |
+| `supabase/migrations/*.sql` | 12 berkas migrasi (skema, RPC, trigger, seed, storage, admin, hapus-akun) |
 | `supabase/functions/` | 10 Edge Function (auth sync, katalog, booking, bayar, notifikasi, admin) |
 | `lib/config/backend_config.dart` | sakelar migrasi di sisi aplikasi |
 | `lib/repositories/` | jembatan aplikasi → Edge Function |
@@ -145,7 +145,7 @@ Uji backend tanpa Docker/Supabase CLI (butuh Python 3 + `pgserver`):
 ```bash
 python3 -m venv /tmp/venv
 /tmp/venv/bin/pip install pgserver "psycopg[binary]"   # sekali saja
-/tmp/venv/bin/python tools/db_check.py      # migrasi + 17 kelompok uji + kecocokan RPC
+/tmp/venv/bin/python tools/db_check.py      # migrasi + 18 kelompok uji + kecocokan RPC
 node tools/ts_check.js                      # impor & nama ekspor Edge Function
 node tools/e2e/run_e2e.mts                  # Edge Function benar-benar dijalankan
 ```

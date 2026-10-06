@@ -108,29 +108,54 @@ class AuthService {
   }
 
   /// Hapus akun permanen: seluruh data cloud + sesi login + riwayat lokal.
+  ///
+  /// Urutan penting:
+  ///   1. Data server (Supabase: profil, pesanan, pembayaran, notifikasi,
+  ///      berkas bukti. Firestore: dokumen milik uid) — memakai token yang
+  ///      masih sah. Setelah akun Firebase dihapus, token tak bisa dipakai.
+  ///   2. Akun Firebase.
+  ///   3. Sisa jejak lokal di HP.
+  ///
+  /// Bila (1) gagal, akun TIDAK dihapus dan galat dilempar — supaya pengguna
+  /// tidak menerima janji "data terhapus" padahal datanya masih tersimpan.
   /// Lempar [FirebaseAuthException] `requires-recent-login` bila sesi sudah
   /// tua — panggil lagi setelah pengguna login ulang.
   static Future<void> deleteAccount() async {
     final user = _auth.currentUser;
     if (user == null) return;
+
+    // (1a) Supabase: hapus data pribadi lewat Edge Function (service role).
+    if (EdgeClient.ready) {
+      final hasil = await EdgeClient.invoke(
+        'auth-user-sync',
+        body: {'action': 'purge'},
+        auth: true,
+      );
+      if (hasil['deleted'] != true && hasil['reason'] != 'user_not_found') {
+        throw const ApiException(
+          code: 'purge_failed',
+          message:
+              'Data akun belum berhasil dihapus dari server. Coba lagi sebentar lagi.',
+        );
+      }
+    }
+
+    // (1b) Firestore (mode migrasi/rollback) — sekarang boleh gagal tanpa
+    // membatalkan penghapusan; datanya akan ikut hilang saat akun Firebase
+    // dihapus pada langkah berikutnya.
     if (FirebaseBootstrap.ready && BackendConfig.writeFirestore) {
       try {
         await FirestoreService.deleteAllUserData(user.uid);
       } catch (_) {}
     }
-    if (EdgeClient.ready) {
-      try {
-        await EdgeClient.invoke(
-          'auth-user-sync',
-          body: {'action': 'unregister-device'},
-          auth: true,
-        );
-      } catch (_) {}
-    }
+
+    // (2) Akun Firebase — setelah ini token mati, jadi lakukan paling akhir
+    // di antara pekerjaan server.
     await user.delete();
     try {
       await GoogleSignIn().signOut();
     } catch (_) {}
+    // (3) Jejak lokal terakhir.
     await BookingStorage.clear();
     EdgeClient.resetToken();
   }

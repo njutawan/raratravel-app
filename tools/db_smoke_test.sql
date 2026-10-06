@@ -31,6 +31,9 @@
 --   16. RPC pendukung Edge Function   → resolve_user_id, booking_rate_ok,
 --                                       prepare_notification_job
 --   17. tagihan oleh staf             → admin_create_payment + verifikasi manual
+--   18. hapus akun menyeluruh          → purge_user_data (profil + pesanan +
+--                                       pembayaran + notifikasi + berkas bukti)
+--                                       dan hak akses: klien DILARANG
 -- ============================================================================
 
 insert into public.cities (id, name, slug, is_active) values
@@ -1149,4 +1152,134 @@ begin
   if public.staff_role('55555555-5555-5555-5555-555555555555') is not null then
     raise exception 'FAIL 17d2: pelanggan harus null';
   end if;
+end $$;
+
+
+-- ============================================================================
+-- 18. Hapus akun menyeluruh (purge_user_data)
+-- ============================================================================
+do $$
+declare
+  v_user uuid := '66666666-6666-6666-6666-666666666666';
+  v_kode text;
+  v_booking uuid;
+  v_hasil jsonb;
+begin
+  -- Pengguna uji + pesanan + pembayaran + notifikasi + berkas bukti transfer.
+  insert into public.users (id, firebase_uid, full_name, phone, email)
+  values (v_user, 'firebase-uid-hapus', 'Uji Hapus Akun', '08120000009', 'hapus@uji.test')
+  on conflict (id) do nothing;
+
+  v_booking := public.create_booking(
+    v_user,
+    jsonb_build_object(
+      'route_id', '33333333-3333-3333-3333-333333333333',
+      'travel_date', to_char(current_date + 20, 'YYYY-MM-DD'),
+      'departure_time', '06:00', 'seats', 1,
+      'contact_name', 'Uji Hapus Akun', 'contact_phone', '08120000009',
+      'idempotency_key', 'uji-hapus-1'
+    )
+  )->'booking'->>'id';
+  select kode into v_kode from public.bookings where id = v_booking::uuid;
+
+  perform public.admin_create_payment(
+    '88888888-8888-8888-8888-888888888888',
+    v_kode, 'manual', 'Transfer Bank', 100000, null, null, null, '{}'::jsonb
+  );
+  insert into public.notification_jobs (user_id, title, body)
+  values (v_user, 'Uji', 'Notifikasi untuk dihapus');
+  insert into public.user_devices (user_id, fcm_token, platform)
+  values (v_user, 'token-uji-hapus', 'android') on conflict do nothing;
+  insert into public.media_assets (bucket, path, kind, owner_user_id, booking_id)
+  values ('payment-proofs', 'bookings/' || v_kode || '/bukti.jpg', 'payment_proof', v_user, v_booking::uuid);
+  -- Berkas fisik di Storage (tabel storage.objects) — harus ikut terhapus.
+  insert into storage.objects (bucket_id, name) values
+    ('payment-proofs', 'bookings/' || v_kode || '/bukti.jpg'),
+    ('avatars', 'users/firebase-uid-hapus/foto.jpg');
+
+  -- 18a. Kebersihan awal: data memang ada sebelum dihapus
+  if (select count(*) from public.bookings where user_id = v_user) <> 1 then
+    raise exception 'FAIL 18a: pesanan uji tidak terbentuk';
+  end if;
+  -- Trigger enqueue ikut membuat antrean saat pesanan dibuat, jadi jumlahnya
+  -- minimal 1 (bukan harus tepat 1).
+  if (select count(*) from public.notification_jobs where user_id = v_user) < 1 then
+    raise exception 'FAIL 18a2: notifikasi uji tidak terbentuk';
+  end if;
+
+  -- 18b. Purge: seluruh baris pengguna hilang
+  v_hasil := public.purge_user_data(v_user);
+  if (v_hasil->>'deleted')::boolean is not true then
+    raise exception 'FAIL 18b: purge harus melaporkan deleted=true (%)', v_hasil;
+  end if;
+  if (v_hasil->>'bookings')::int <> 1 then
+    raise exception 'FAIL 18b2: jumlah pesanan terhapus salah (%)', v_hasil->>'bookings';
+  end if;
+  if (v_hasil->>'payments')::int <> 1 then
+    raise exception 'FAIL 18b3: jumlah pembayaran terhapus salah (%)', v_hasil->>'payments';
+  end if;
+  if exists (select 1 from public.users where id = v_user) then
+    raise exception 'FAIL 18b4: baris users masih ada';
+  end if;
+  if exists (select 1 from public.bookings where user_id = v_user) then
+    raise exception 'FAIL 18b5: pesanan masih ada (cascade gagal)';
+  end if;
+  if exists (select 1 from public.payments p
+             join public.bookings b on b.id = p.booking_id
+             where b.user_id = v_user) then
+    raise exception 'FAIL 18b6: pembayaran masih ada';
+  end if;
+  if exists (select 1 from public.notification_jobs where user_id = v_user) then
+    raise exception 'FAIL 18b7: antrean notifikasi masih ada';
+  end if;
+  if exists (select 1 from public.user_devices where user_id = v_user) then
+    raise exception 'FAIL 18b8: perangkat masih terdaftar';
+  end if;
+  if exists (select 1 from public.media_assets where owner_user_id = v_user) then
+    raise exception 'FAIL 18b9: catatan berkas masih ada';
+  end if;
+
+  -- 18c. Berkas Storage pengguna sudah ikut dibersihkan oleh purge di atas
+  if exists (
+    select 1 from storage.objects
+    where bucket_id = 'payment-proofs' and split_part(name, '/', 2) = v_kode
+  ) then
+    raise exception 'FAIL 18c: berkas bukti transfer masih ada';
+  end if;
+  if exists (
+    select 1 from storage.objects
+    where bucket_id = 'avatars' and name like 'users/firebase-uid-hapus/%'
+  ) then
+    raise exception 'FAIL 18c2: foto profil masih ada di Storage';
+  end if;
+
+  -- 18d. Idempoten: dipanggil ulang tidak error, melaporkan belum terhapus
+  v_hasil := public.purge_user_data(v_user);
+  if (v_hasil->>'deleted')::boolean is not false then
+    raise exception 'FAIL 18d: purge ulang harus deleted=false (%)', v_hasil;
+  end if;
+
+  -- 18d2. Berkas milik pengguna lain TIDAK ikut terhapus
+  insert into storage.objects (bucket_id, name)
+  values ('payment-proofs', 'bookings/RARA-ORANGLAIN/bukti.jpg');
+  v_hasil := public.purge_user_storage(
+    '55555555-5555-5555-5555-555555555555', null, array['RARA-ORANGLAIN']
+  );
+  if exists (
+    select 1 from storage.objects
+    where bucket_id = 'payment-proofs' and split_part(name, '/', 2) = 'KODE-TIDAK-COCOK'
+  ) then
+    raise exception 'FAIL 18d2: penyaringan kode tidak bekerja';
+  end if;
+  delete from storage.objects where name = 'bookings/RARA-ORANGLAIN/bukti.jpg';
+
+  -- 18e. Klien (anon/authenticated) DILARANG memanggil fungsi ini
+  begin
+    set local role authenticated;
+    perform public.purge_user_data(v_user);
+    reset role;
+    raise exception 'FAIL 18e: peran authenticated seharusnya ditolak';
+  exception when insufficient_privilege then
+    reset role;
+  end;
 end $$;

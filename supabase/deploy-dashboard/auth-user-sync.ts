@@ -336,6 +336,18 @@ Deno.serve(async (req) => {
     const firebaseUser = await requireFirebaseUser(req);
     const body = req.method === "POST" ? await readJson(req) : {};
     const action = body.action ?? "sync";
+    if (action === "purge") {
+      const purgeUserId = await rpc("resolve_user_id", {
+        p_firebase_uid: firebaseUser.uid
+      });
+      if (!purgeUserId) {
+        return json({ ok: true, deleted: false, reason: "user_not_found" }, { origin });
+      }
+      const hasil = await rpc("purge_user_data", {
+        p_user_id: purgeUserId
+      });
+      return json({ ok: true, ...hasil }, { origin });
+    }
     if (action === "unregister-device") {
       const result2 = await rpc("unregister_user_device", {
         p_user_id: await userId(firebaseUser.uid),

@@ -48,10 +48,18 @@ spam OTP (biaya SMS) dan spam database.
 - [ ] Token debug HP development terdaftar **sebelum** enforcement:
       `bash tools/appcheck_debug_token.sh --watch` (salin token dari logcat).
 - [ ] **Enforcement** dinyalakan untuk **Firestore** dan **Authentication**.
+- [ ] **Authentication → Settings → SMS region policy**: izinkan hanya negara
+      yang benar-benar dilayani (Indonesia) dan tetapkan kuota harian SMS —
+      ini pembatas nyata biaya SMS bila APK disalahgunakan.
 - [ ] Uji: login OTP + buat pesanan di HP fisik → harus tetap jalan.
 
 > Urutan penting: token debug dulu, enforcement kemudian. Kalau terbalik,
 > build debug Anda sendiri ikut terblokir.
+>
+> Catatan: cooldown kirim-ulang OTP 60 detik di aplikasi hanya lapis tampilan.
+> Cloud Function `functions_sample/` (koleksi `rateLimits`) **tidak dipanggil
+> aplikasi**, jadi jangan mengandalkannya sebagai pembatas server. Yang bekerja:
+> App Check + kuota/policy SMS Firebase di atas.
 
 ---
 
@@ -79,7 +87,7 @@ spam OTP (biaya SMS) dan spam database.
 
 ## 4. Supabase — fungsi & notifikasi (sekali saja)
 
-- [ ] 11 migrasi + 10 Edge Function ter-deploy
+- [ ] 12 migrasi + 10 Edge Function ter-deploy **ulang** (fungsi `auth-user-sync` berubah: aksi `purge` untuk hapus akun)
       (`bash tools/setup_supabase.sh`, atau jalur Dashboard di
       `MIGRASI_SUPABASE.md` §2.5).
 - [ ] Secrets Edge Function terisi (`MIGRASI_SUPABASE.md` §3): Firebase service
@@ -139,6 +147,7 @@ dengan `anon` lama) — asal **bukan** `service_role`/`sb_secret_…`.
 | Offline total (mode pesawat) | Pesanan lokal + WA jalan; saat online lagi, pesanan **tersinkron otomatis** (buka aplikasi sekali, login) |
 | Interupsi: telepon saat OTP, putar layar saat loading | Tanpa crash / state aneh |
 | Install fresh & upgrade (backup mati) | Login → riwayat cloud pulih |
+| **Hapus Akun** (Profil → Hapus Akun) | Pesan sukses muncul; login ulang dengan akun itu membuat akun baru yang **kosong** (tanpa pesanan lama) — tanda data benar-benar terhapus |
 | Batalkan pesanan | Status langsung "Dibatalkan", tombol Batalkan hilang |
 | Unggah bukti transfer dari galeri & kamera | Terunggah, admin bisa membuka |
 
