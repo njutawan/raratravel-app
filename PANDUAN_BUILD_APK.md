@@ -176,6 +176,31 @@ storeFile=C:/Users/NAMA-KAMU/upload-keystore.jks
 
 ### 3c. Build App Bundle (.aab)
 
+**Cara A — lewat GitHub Actions (tanpa install Flutter, disarankan):**
+
+1. Simpan keystore ke Secrets sekali saja:
+
+   ```bash
+   bash tools/set_keystore_secrets.sh --keystore ~/upload-keystore.jks \
+        --alias rara-travel --build        # Git Bash juga jalan di Windows
+   ```
+   ```powershell
+   .\tools\set_keystore_secrets.ps1 -Keystore $env:USERPROFILE\upload-keystore.jks `
+        -Alias rara-travel -Build
+   ```
+
+2. Kalau perlu membangun ulang nanti: **Actions → Build APK → Run workflow →
+   centang `aab`** (atau `gh workflow run build-apk.yml -f aab=true`).
+3. Unduh artifact **`RaraTravel-v…-release-aab`** — isinya `app-release.aab`
+   + `symbols-rara-*.zip` (untuk membaca crash rilis yang ter-obfuscate).
+   Skrip di atas mencetak **SHA-1/SHA-256 kunci upload**; daftarkan ke Firebase
+   Console sebelum membagikan aplikasinya.
+
+> Tanpa secrets keystore, tombol `aab` akan berhenti dengan pesan jelas —
+> APK biasa tetap dibangun seperti sebelumnya (ditandatangani debug key).
+
+**Cara B — di komputer sendiri:**
+
 ```bash
 flutter build appbundle --release
 ```

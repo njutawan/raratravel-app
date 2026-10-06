@@ -9,6 +9,11 @@ name: Build APK
 # APK release tanpa android/key.properties ditandatangani debug key:
 #   - bisa langsung di-install & dibagikan via WA/Drive (lihat PANDUAN_BUILD_APK.md)
 #   - TIDAK diterima Google Play Store (untuk itu perlu AAB + keystore rilis).
+#
+# AAB untuk Play Store bersifat OPSIONAL dan hanya dibangun bila diminta:
+#   Actions → Build APK → Run workflow → centang "aab"   (atau `gh workflow run
+#   build-apk.yml -f aab=true`). Butuh secrets keystore rilis; cara mengisinya:
+#   `bash tools/set_keystore_secrets.sh` (lihat PANDUAN_BUILD_APK.md §3).
 
 on:
   push:
@@ -21,6 +26,11 @@ on:
       - "supabase/**"
       - "tools/**"
   workflow_dispatch:
+    inputs:
+      aab:
+        description: "Ikut bangun AAB bertanda tangan rilis untuk Play Store"
+        type: boolean
+        default: false
 
 permissions:
   contents: write # dibutuhkan untuk commit APK ke branch
@@ -94,6 +104,37 @@ jobs:
           echo "version=${VERSION:-dev}" >> "$GITHUB_OUTPUT"
           echo "full=${FULL:-dev}" >> "$GITHUB_OUTPUT"
           echo "Versi aplikasi: ${FULL:-dev}"
+
+      # Keystore rilis (Play Store) — opsional. Bila secrets berikut diisi,
+      # APK/AAB di sini bertanda tangan kunci rilis (SHA-nya harus didaftarkan
+      # di Firebase). Bila kosong, build tetap jalan dengan debug key seperti
+      # sekarang, sehingga push biasa tidak pernah gagal karena ini.
+      #   KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD
+      - name: Siapkan keystore rilis (bila secrets tersedia)
+        id: ks
+        env:
+          KS_B64: ${{ secrets.KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KS_KEYPASS: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          rm -f android/key.properties android/upload-keystore.jks
+          if [ -z "$KS_B64" ]; then
+            echo "ada=false" >> "$GITHUB_OUTPUT"
+            echo "Keystore rilis belum diisi — memakai debug key (tidak untuk Play)."
+            exit 0
+          fi
+          echo "$KS_B64" | base64 -d > android/upload-keystore.jks
+          {
+            echo "storePassword=$KS_PASS"
+            echo "keyPassword=$KS_KEYPASS"
+            echo "keyAlias=$KS_ALIAS"
+            echo "storeFile=$GITHUB_WORKSPACE/android/upload-keystore.jks"
+          } > android/key.properties
+          echo "ada=true" >> "$GITHUB_OUTPUT"
+          echo "Keystore rilis dipasang — APK/AAB akan bertanda tangan kunci rilis."
+          keytool -list -v -keystore android/upload-keystore.jks \
+            -storepass "$KS_PASS" 2>/dev/null | grep -E "SHA1:|SHA256:" || true
 
       - name: flutter build apk --release
         # Supabase bersifat opsional: isi Repository variables berikut agar APK
@@ -175,6 +216,9 @@ jobs:
 
       - name: Cetak SHA penanda tangan APK (untuk Firebase)
         run: |
+          TANDA="debug key (android/debug.keystore)"
+          if [ "${{ steps.ks.outputs.ada }}" = "true" ]; then TANDA="KUNCI RILIS (secrets)"; fi
+          echo "Ditandatangani: $TANDA"
           APK_SHA1="$(keytool -printcert -jarfile build/app/outputs/flutter-apk/app-release.apk 2>/dev/null | grep -i 'SHA1:' | head -1)"
           APK_SHA256="$(keytool -printcert -jarfile build/app/outputs/flutter-apk/app-release.apk 2>/dev/null | grep -i 'SHA256:' | head -1)"
           KS_SHA1="$(keytool -list -v -keystore android/debug.keystore -storepass android -alias androiddebugkey 2>/dev/null | grep -Eo '([0-9A-Fa-f]{2}:){19}[0-9A-Fa-f]{2}' | head -1)"
@@ -191,6 +235,60 @@ jobs:
             echo ""
             echo "(Harus sama dengan \`android/SHA_FINGERPRINTS.txt\`. Detail: PANDUAN_FIREBASE.md langkah 4.)"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: flutter build appbundle --release (khusus Play Store)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.aab }}
+        env:
+          APP_VERSION: ${{ steps.ver.outputs.full }}
+          SB_URL: ${{ vars.SUPABASE_URL }}
+          SB_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+          SB_CATALOG: ${{ vars.CATALOG_SOURCE }}
+          SB_BOOKING: ${{ vars.BOOKING_WRITE }}
+          SB_PAYMENTS: ${{ vars.PAYMENTS_ENABLED }}
+        run: |
+          if [ "${{ steps.ks.outputs.ada }}" != "true" ]; then
+            echo "::error title=Keystore rilis belum ada::AAB untuk Play Store wajib bertanda tangan kunci rilis. Jalankan 'bash tools/set_keystore_secrets.sh' lebih dulu (PANDUAN_BUILD_APK.md §3)."
+            exit 1
+          fi
+          DEFINES=()
+          if [ -n "$APP_VERSION" ]; then DEFINES+=("--dart-define=APP_VERSION=$APP_VERSION"); fi
+          if [ -n "$SB_URL" ]; then DEFINES+=("--dart-define=SUPABASE_URL=$SB_URL"); fi
+          if [ -n "$SB_KEY" ]; then DEFINES+=("--dart-define=SUPABASE_ANON_KEY=$SB_KEY"); fi
+          if [ -n "$SB_CATALOG" ]; then DEFINES+=("--dart-define=CATALOG_SOURCE=$SB_CATALOG"); fi
+          if [ -n "$SB_BOOKING" ]; then DEFINES+=("--dart-define=BOOKING_WRITE=$SB_BOOKING"); fi
+          if [ -n "$SB_PAYMENTS" ]; then DEFINES+=("--dart-define=PAYMENTS_ENABLED=$SB_PAYMENTS"); fi
+          set +e
+          flutter build appbundle --release \
+            --obfuscate --split-debug-info=build/symbols "${DEFINES[@]}" 2>&1 | tee /tmp/aab.log
+          STATUS=${PIPESTATUS[0]}
+          set -e
+          if [ "$STATUS" -ne 0 ]; then
+            echo "::error title=Gagal membangun AAB::$(grep -iE 'error|exception|failed|what went wrong' /tmp/aab.log | grep -viE 'warning|deprecat' | tail -6 | tr '\n' '~' | cut -c1-800)"
+            exit "$STATUS"
+          fi
+          # Simbol debug (untuk membaca stack trace AAB yang ter-obfuscate).
+          if [ -d build/symbols ]; then
+            zip -qr "symbols-rara-v${APP_VERSION:-dev}.zip" build/symbols
+          fi
+          {
+            echo "### AAB rilis siap untuk Play Store 🎯"
+            echo ""
+            echo '- Unduh artifact `RaraTravel-v${{ steps.ver.outputs.version }}-release-aab`.'
+            echo '- Simpan juga `symbols-rara-*.zip` untuk membaca stack trace rilis.'
+            echo '- Unggah lewat **Play Console → Test dan rilis → Pengujian tertutup** (bukan langsung produksi).'
+            echo '- Setelah unggah pertama, salin **SHA-256 Play App Signing** ke Firebase (RILIS_PRODUKSI.md poin 3).'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Unggah AAB + symbols sebagai artifact workflow
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.aab }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: RaraTravel-v${{ steps.ver.outputs.version }}-release-aab
+          path: |
+            build/app/outputs/bundle/release/app-release.aab
+            symbols-rara-*.zip
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Unggah APK sebagai artifact workflow
         uses: actions/upload-artifact@v4
@@ -210,6 +308,11 @@ jobs:
           # -f: .gitignore sengaja mengecualikan apk/ — APK hasil CI memang
           # ingin di-commit agar mudah diambil lewat `git pull`.
           git add -f "apk/RaraTravel-v${{ steps.ver.outputs.version }}-release.apk"
+          AAB="build/app/outputs/bundle/release/app-release.aab"
+          if [ -f "$AAB" ]; then
+            cp "$AAB" "apk/RaraTravel-v${{ steps.ver.outputs.version }}-release.aab"
+            git add -f "apk/RaraTravel-v${{ steps.ver.outputs.version }}-release.aab"
+          fi
           # `flutter pub get` bisa memperbarui pubspec.lock (dependensi baru),
           # ikutkan agar berkas kunci tidak tertinggal basi di repo.
           if ! git diff --quiet -- pubspec.lock; then git add pubspec.lock; fi
