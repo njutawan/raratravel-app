@@ -20,8 +20,6 @@ class CatalogPage<T> {
     required this.limit,
     required this.offset,
   });
-
-  bool get hasMore => offset + items.length < total;
 }
 
 /// Katalog dari Supabase (`search-routes`), dengan data lokal sebagai cadangan.

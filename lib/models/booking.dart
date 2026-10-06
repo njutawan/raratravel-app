@@ -123,13 +123,27 @@ class Booking {
   };
 
   /// Parsing toleran: field hilang / tipe meleset → default aman,
-  /// bukan layar error. (Data cloud bisa diedit manual dari Console.)
+  /// bukan layar error. (Data cloud bisa diedit manual dari Console, jadi
+  /// angka bisa saja tersimpan sebagai teks — `as num` akan melempar.)
   static String _str(Map<String, dynamic> m, String k) =>
       (m[k] ?? '').toString();
-  static int _num(Map<String, dynamic> m, String k) =>
-      (m[k] as num?)?.toInt() ?? (int.tryParse('${m[k] ?? ''}') ?? 0);
-  static double _dbl(Map<String, dynamic> m, String k) =>
-      (m[k] as num?)?.toDouble() ?? (double.tryParse('${m[k] ?? ''}') ?? 0);
+
+  static int _num(Map<String, dynamic> m, String k) {
+    final nilai = m[k];
+    if (nilai is num) return nilai.toInt();
+    if (nilai is String) {
+      final teks = nilai.trim();
+      return int.tryParse(teks) ?? double.tryParse(teks)?.toInt() ?? 0;
+    }
+    return 0;
+  }
+
+  static double _dbl(Map<String, dynamic> m, String k) {
+    final nilai = m[k];
+    if (nilai is num) return nilai.toDouble();
+    if (nilai is String) return double.tryParse(nilai.trim()) ?? 0;
+    return 0;
+  }
 
   factory Booking.fromMap(Map<String, dynamic> m) {
     final status = _str(m, 'status');
@@ -165,6 +179,9 @@ class Booking {
   /// Bangun dari balasan server (`booking_json` di PostgreSQL).
   factory Booking.fromApi(Map<String, dynamic> json, {String userId = ''}) {
     final statusCode = (json['status'] ?? 'pending').toString();
+    // Server selalu mengirim angka, tapi parsing tetap toleran (mis. data hasil
+    // impor/manual yang tersimpan sebagai teks).
+    final kursiServer = _num(json, 'seats');
     return Booking(
       kode: (json['kode'] ?? '').toString(),
       asal: (json['origin'] ?? '').toString(),
@@ -175,7 +192,7 @@ class Booking {
       wa: _waLokal((json['contact_phone'] ?? '').toString()),
       jemput: (json['pickup_address'] ?? '').toString(),
       antar: (json['dropoff_address'] ?? '').toString(),
-      kursi: (json['seats'] as num?)?.toInt() ?? 1,
+      kursi: kursiServer > 0 ? kursiServer : 1,
       totalHarga: _dbl(json, 'total').round(),
       metodeBayar: (json['payment_method'] ?? '').toString(),
       catatan: (json['notes'] ?? '').toString(),

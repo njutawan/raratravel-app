@@ -1,8 +1,13 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../config/backend_config.dart';
 import '../services/whatsapp_service.dart';
 import '../services/auth_service.dart';
+import '../services/edge_client.dart';
 import '../services/firebase_bootstrap.dart';
+import '../services/messaging_service.dart';
+import '../services/preferences_service.dart';
 import 'login_carousel_screen.dart';
 import '../theme/app_theme.dart';
 import '../utils/constants.dart';
@@ -218,6 +223,12 @@ class ProfileScreen extends StatelessWidget {
           ),
           const SizedBox(height: 12),
 
+          const _PreferensiCard(),
+          const SizedBox(height: 12),
+
+          const _RingkasanBackendCard(),
+          const SizedBox(height: 12),
+
           Card(
             child: Column(
               children: [
@@ -264,7 +275,7 @@ class ProfileScreen extends StatelessWidget {
           const SizedBox(height: 16),
           Center(
             child: Text(
-              'Rara Travel App v1.0.0 • raratravel.id',
+              'Rara Travel App v${MessagingService.appVersion} • raratravel.id',
               style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
             ),
           ),
@@ -310,6 +321,10 @@ class _AccountCard extends StatelessWidget {
           const SnackBar(content: Text('Akun & seluruh data dihapus.')),
         );
       }
+    } on ApiException catch (e) {
+      // Mis. data server belum terhapus → akun sengaja TIDAK dihapus.
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     } on FirebaseAuthException catch (e) {
       if (!context.mounted) return;
       final msg = e.code == 'requires-recent-login'
@@ -377,6 +392,248 @@ class _AccountCard extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Kartu preferensi (mata uang & bahasa).
+///
+/// Kartu diagnostik: mode backend & kesiapan fitur pada build yang berjalan.
+///
+/// Berguna saat uji rilis di HP: menampilkan (tanpa perlu buka kode) apakah
+/// katalog memakai Supabase, ke mana pesanan ditulis, apakah tombol pembayaran
+/// aktif, dan apakah push notification sudah terdaftar. Ada tombol salin agar
+/// isinya mudah dilaporkan ke tim.
+class _RingkasanBackendCard extends StatelessWidget {
+  const _RingkasanBackendCard();
+
+  String get _teksRingkasan =>
+      'Rara Travel v${MessagingService.appVersion} — ${BackendConfig.deskripsi}';
+
+  @override
+  Widget build(BuildContext context) {
+    final warna = Theme.of(context).colorScheme;
+    return Card(
+      child: ExpansionTile(
+        leading: Icon(Icons.settings_suggest_outlined, color: warna.primary),
+        title: const Text(
+          'Ringkasan Backend',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+        ),
+        subtitle: const Text(
+          'Untuk uji rilis: mode data, pembayaran, notifikasi',
+          style: TextStyle(fontSize: 12),
+        ),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        children: [
+          const Divider(height: 1),
+          const SizedBox(height: 8),
+          _Baris(label: 'Versi aplikasi', nilai: MessagingService.appVersion),
+          _Baris(
+            label: 'Firebase',
+            nilai: FirebaseBootstrap.ready ? 'siap' : 'belum siap',
+          ),
+          _Baris(
+            label: 'Supabase',
+            nilai: BackendConfig.hasSupabase ? 'tersambung' : 'belum diatur',
+          ),
+          _Baris(
+            label: 'Katalog',
+            nilai:
+                BackendConfig.useSupabaseCatalog ? 'Supabase' : 'lokal (bawaan)',
+          ),
+          _Baris(
+            label: 'Penulisan pesanan',
+            nilai: BackendConfig.useSupabaseBooking
+                ? (BackendConfig.writeFirestore
+                    ? 'Supabase + Firestore (dual)'
+                    : 'Supabase')
+                : 'Firestore',
+          ),
+          _Baris(
+            label: 'Pembayaran online',
+            nilai: BackendConfig.paymentsEnabled ? 'AKTIF' : 'nonaktif',
+            sorot: BackendConfig.paymentsEnabled,
+          ),
+          _Baris(
+            label: 'Laporan crash (Crashlytics)',
+            nilai: FirebaseBootstrap.crashReporting ? 'aktif' : 'nonaktif',
+            sorot: FirebaseBootstrap.crashReporting,
+          ),
+          FutureBuilder<bool>(
+            future: MessagingService.tokenTerdaftar(),
+            builder: (context, snap) {
+              final teks = snap.hasData
+                  ? (snap.data! ? 'terdaftar' : 'belum terdaftar')
+                  : 'memeriksa…';
+              return _Baris(label: 'Notifikasi (FCM)', nilai: teks);
+            },
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              icon: const Icon(Icons.copy_all_outlined, size: 18),
+              label: const Text('Salin ringkasan'),
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: _teksRingkasan));
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Ringkasan backend disalin.')),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Satu baris label → nilai pada kartu diagnostik.
+class _Baris extends StatelessWidget {
+  const _Baris({required this.label, required this.nilai, this.sorot = false});
+
+  final String label;
+  final String nilai;
+  final bool sorot;
+
+  @override
+  Widget build(BuildContext context) {
+    final warna = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 4,
+            child: Text(
+              label,
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+            ),
+          ),
+          Expanded(
+            flex: 5,
+            child: Text(
+              nilai,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: sorot ? FontWeight.bold : FontWeight.w500,
+                color: sorot ? warna.primary : null,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Pilihan ini benar-benar dipakai aplikasi: mata uang mengganti simbol pada
+/// semua harga, bahasa mengganti locale (nama hari/bulan + dialog tanggal).
+class _PreferensiCard extends StatelessWidget {
+  const _PreferensiCard();
+
+  static String _labelMataUang(String kode) => switch (kode) {
+    'IDR' => 'IDR - Rupiah Indonesia (Rp)',
+    _ => kode,
+  };
+
+  static String _labelBahasa(String kode) => switch (kode) {
+    'id' => 'Indonesia',
+    'en' => 'English',
+    _ => kode,
+  };
+
+  Future<void> _pilih(
+    BuildContext context, {
+    required String judul,
+    required List<String> pilihan,
+    required String terpilih,
+    required String Function(String) label,
+    required Future<void> Function(String) onPilih,
+  }) async {
+    final hasil = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text(judul),
+        children: [
+          // RadioGroup: API pilihan tunggal terbaru Flutter (groupValue &
+          // onChanged tidak lagi dipasang pada tiap RadioListTile).
+          RadioGroup<String>(
+            groupValue: terpilih,
+            onChanged: (v) => Navigator.pop(ctx, v),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final kode in pilihan)
+                  RadioListTile<String>(value: kode, title: Text(label(kode))),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+    if (hasil != null) await onPilih(hasil);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<String>(
+      valueListenable: PreferencesService.mataUang,
+      builder: (context, mataUangKode, _) => ValueListenableBuilder<String>(
+        valueListenable: PreferencesService.bahasa,
+        builder: (context, bahasaKode, __) => Card(
+          child: Column(
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Preferensi',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(
+                  Icons.attach_money,
+                  color: AppTheme.primary,
+                ),
+                title: const Text('Mata Uang'),
+                subtitle: Text(_labelMataUang(mataUangKode)),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _pilih(
+                  context,
+                  judul: 'Pilih Mata Uang',
+                  pilihan: PreferencesService.daftarMataUang,
+                  terpilih: mataUangKode,
+                  label: _labelMataUang,
+                  onPilih: PreferencesService.setMataUang,
+                ),
+              ),
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              ListTile(
+                leading: const Icon(Icons.translate, color: AppTheme.primary),
+                title: const Text('Bahasa'),
+                subtitle: Text(_labelBahasa(bahasaKode)),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _pilih(
+                  context,
+                  judul: 'Pilih Bahasa',
+                  pilihan: PreferencesService.daftarBahasa,
+                  terpilih: bahasaKode,
+                  label: _labelBahasa,
+                  onPilih: PreferencesService.setBahasa,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -110,7 +110,8 @@ tanpa kerja background (baterai idle ≈ nol).
 - [ ] `versionCode` naik tiap upload; keystore `.jks` + password di 2 tempat
 
 ### 3.6 Pascakrilis (disarankan)
-Crashlytics + pantau Android Vitals/ANR, balas review, upgrade major
+Crashlytics (sudah dipasang; verifikasi lewat Profil → Ringkasan Backend) +
+pantau Android Vitals/ANR, balas review, uji regresi SDK setelah upgrade major
 Firebase terjadwal (catatan M-4), ulangi audit tiap fitur sensitif.
 
 ---

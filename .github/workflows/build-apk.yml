@@ -9,6 +9,11 @@ name: Build APK
 # APK release tanpa android/key.properties ditandatangani debug key:
 #   - bisa langsung di-install & dibagikan via WA/Drive (lihat PANDUAN_BUILD_APK.md)
 #   - TIDAK diterima Google Play Store (untuk itu perlu AAB + keystore rilis).
+#
+# AAB untuk Play Store bersifat OPSIONAL dan hanya dibangun bila diminta:
+#   Actions → Build APK → Run workflow → centang "aab"   (atau `gh workflow run
+#   build-apk.yml -f aab=true`). Butuh secrets keystore rilis; cara mengisinya:
+#   `bash tools/set_keystore_secrets.sh` (lihat PANDUAN_BUILD_APK.md §3).
 
 on:
   push:
@@ -21,6 +26,11 @@ on:
       - "supabase/**"
       - "tools/**"
   workflow_dispatch:
+    inputs:
+      aab:
+        description: "Ikut bangun AAB bertanda tangan rilis untuk Play Store"
+        type: boolean
+        default: false
 
 permissions:
   contents: write # dibutuhkan untuk commit APK ke branch
@@ -36,9 +46,9 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
@@ -56,18 +66,165 @@ jobs:
       - name: flutter pub get
         run: flutter pub get
 
+      # Unit test (format harga/tanggal, model pesanan & status).
+      - name: flutter test
+        run: |
+          set +e
+          # -r expanded: setiap test dicetak saat berjalan → nama yang gagal
+          # mudah diangkat ke anotasi.
+          flutter test -r expanded > /tmp/test.log 2>&1
+          STATUS=$?
+          tail -40 /tmp/test.log
+          set -e
+          if [ "$STATUS" -ne 0 ]; then
+            RINGKAS="$(grep -E '\[E\]|Expected:|Actual:|Which:|Test failed' /tmp/test.log | head -10 | tr '\n' '~' | cut -c1-1400)"
+            echo "::error title=Test gagal::${RINGKAS:-tidak terdeteksi}"
+          else
+            # Anotasi ringkas = bukti yang bisa dilihat langsung di halaman run
+            # (tanpa membuka log) bahwa tes benar-benar dijalankan & lulus.
+            LULUS="$(grep -E 'All tests passed|Semua tes lulus' /tmp/test.log | tail -1)"
+            JUMLAH="$(grep -oE '\+[0-9]+' /tmp/test.log | tail -1 | tr -d '+')"
+            echo "::notice title=Test lulus::${LULUS:-selesai} — ${JUMLAH:-?} tes"
+          fi
+          exit "$STATUS"
+
+      # Gerbang cepat: galat kode ketahuan sebelum Gradle jalan, dan pesannya
+      # muncul di log CI. Peringatan/informasi tidak menggagalkan build.
+      - name: flutter analyze (galat kode saja)
+        run: |
+          set +e
+          flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 | tee /tmp/analyze.log
+          STATUS=${PIPESTATUS[0]}
+          set -e
+          if [ "$STATUS" -ne 0 ]; then
+            echo "::error title=Galat analisis kode::$(grep -iE 'error' /tmp/analyze.log | tail -8 | tr '\n' '~' | cut -c1-1200)"
+            echo "::error title=Ekor analisis::$(tail -12 /tmp/analyze.log | tr '\n' '~' | cut -c1-1200)"
+          fi
+          exit "$STATUS"
+
       - name: Baca versi aplikasi (pubspec.yaml)
         id: ver
         run: |
-          VERSION="$(grep -E '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)"
+          FULL="$(grep -E '^version:' pubspec.yaml | awk '{print $2}')"
+          VERSION="${FULL%%+*}"
           echo "version=${VERSION:-dev}" >> "$GITHUB_OUTPUT"
-          echo "Versi aplikasi: ${VERSION:-dev}"
+          echo "full=${FULL:-dev}" >> "$GITHUB_OUTPUT"
+          echo "Versi aplikasi: ${FULL:-dev}"
+
+      # Keystore rilis (Play Store) — opsional. Bila secrets berikut diisi,
+      # APK/AAB di sini bertanda tangan kunci rilis (SHA-nya harus didaftarkan
+      # di Firebase). Bila kosong, build tetap jalan dengan debug key seperti
+      # sekarang, sehingga push biasa tidak pernah gagal karena ini.
+      #   KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD
+      - name: Siapkan keystore rilis (bila secrets tersedia)
+        id: ks
+        env:
+          KS_B64: ${{ secrets.KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KS_KEYPASS: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          rm -f android/key.properties android/upload-keystore.jks
+          if [ -z "$KS_B64" ]; then
+            echo "ada=false" >> "$GITHUB_OUTPUT"
+            echo "Keystore rilis belum diisi — memakai debug key (tidak untuk Play)."
+            exit 0
+          fi
+          echo "$KS_B64" | base64 -d > android/upload-keystore.jks
+          {
+            echo "storePassword=$KS_PASS"
+            echo "keyPassword=$KS_KEYPASS"
+            echo "keyAlias=$KS_ALIAS"
+            echo "storeFile=$GITHUB_WORKSPACE/android/upload-keystore.jks"
+          } > android/key.properties
+          echo "ada=true" >> "$GITHUB_OUTPUT"
+          echo "Keystore rilis dipasang — APK/AAB akan bertanda tangan kunci rilis."
+          keytool -list -v -keystore android/upload-keystore.jks \
+            -storepass "$KS_PASS" 2>/dev/null | grep -E "SHA1:|SHA256:" || true
 
       - name: flutter build apk --release
-        run: flutter build apk --release
+        # Supabase bersifat opsional: isi Repository variables berikut agar APK
+        # hasil CI memakai backend baru (Settings → Secrets and variables →
+        # Actions → Variables). Dibiarkan kosong = mode lokal/Firestore seperti
+        # sebelumnya, jadi perilaku APK tidak berubah tanpa setelan ini.
+        #   SUPABASE_URL, SUPABASE_ANON_KEY   (wajib untuk mengaktifkan)
+        #   CATALOG_SOURCE  local | supabase
+        #   BOOKING_WRITE   dual | supabase | firestore
+        #   PAYMENTS_ENABLED  true | false
+        env:
+          APP_VERSION: ${{ steps.ver.outputs.full }}
+          SB_URL: ${{ vars.SUPABASE_URL }}
+          SB_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+          SB_CATALOG: ${{ vars.CATALOG_SOURCE }}
+          SB_BOOKING: ${{ vars.BOOKING_WRITE }}
+          SB_PAYMENTS: ${{ vars.PAYMENTS_ENABLED }}
+        run: |
+          DEFINES=()
+          # Versi aplikasi dilaporkan ke server (user_devices.app_version).
+          if [ -n "$APP_VERSION" ]; then DEFINES+=("--dart-define=APP_VERSION=$APP_VERSION"); fi
+          if [ -n "$SB_URL" ]; then DEFINES+=("--dart-define=SUPABASE_URL=$SB_URL"); fi
+          if [ -n "$SB_KEY" ]; then DEFINES+=("--dart-define=SUPABASE_ANON_KEY=$SB_KEY"); fi
+          if [ -n "$SB_CATALOG" ]; then DEFINES+=("--dart-define=CATALOG_SOURCE=$SB_CATALOG"); fi
+          if [ -n "$SB_BOOKING" ]; then DEFINES+=("--dart-define=BOOKING_WRITE=$SB_BOOKING"); fi
+          if [ -n "$SB_PAYMENTS" ]; then DEFINES+=("--dart-define=PAYMENTS_ENABLED=$SB_PAYMENTS"); fi
+          if [ ${#DEFINES[@]} -eq 0 ]; then
+            echo "Tanpa dart-define dari repo — mode lokal/Firestore seperti biasa."
+          else
+            printf '%s\n' "${DEFINES[@]}" \
+              | sed 's|^--dart-define=SUPABASE_ANON_KEY=.*|--dart-define=SUPABASE_ANON_KEY=***|'
+          fi
+          # Bila build gagal, angkat baris galatnya ke anotasi agar mudah dibaca
+          # dari `gh run view` (log mentah tersimpan di artifact/halaman run).
+          set +e
+          flutter build apk --release "${DEFINES[@]}" 2>&1 | tee /tmp/build.log
+          STATUS=${PIPESTATUS[0]}
+          set -e
+          if [ "$STATUS" -ne 0 ]; then
+            GALAT="$(grep -iE 'error|exception|failed|failure|what went wrong' /tmp/build.log | grep -viE 'warning|deprecat' | tail -6 | tr '\n' '~' | cut -c1-800)"
+            EKOR="$(tail -12 /tmp/build.log | tr '\n' '~' | cut -c1-800)"
+            echo "::error title=Baris galat build::${GALAT:-tidak terdeteksi}"
+            echo "::error title=Ekor log build::${EKOR}"
+          fi
+          exit "$STATUS"
+
+      # Verifikasi cepat: APK yang diunduh benar-benar memakai mode yang
+      # diharapkan (mis. pembayaran AKTIF). Sakelar diambil dari Repository
+      # variables — kalau tabel ini tidak sesuai, APK-nya bukan yang diinginkan.
+      - name: Catat mode backend APK (ringkasan)
+        env:
+          SB_URL: ${{ vars.SUPABASE_URL }}
+          SB_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+          SB_CATALOG: ${{ vars.CATALOG_SOURCE }}
+          SB_BOOKING: ${{ vars.BOOKING_WRITE }}
+          SB_PAYMENTS: ${{ vars.PAYMENTS_ENABLED }}
+        run: |
+          SUPA="kosong"
+          [ -n "$SB_URL" ] && [ -n "$SB_KEY" ] && SUPA="terisi"
+          BAYAR="nonaktif"
+          [ "$SUPA" = "terisi" ] && [ "$SB_PAYMENTS" = "true" ] && BAYAR="AKTIF (tombol Bayar Sekarang tampil)"
+          KATALOG="${SB_CATALOG:-local}"
+          [ "$SUPA" = "kosong" ] && KATALOG="$KATALOG (Supabase kosong)"
+          PESANAN="${SB_BOOKING:-dual}"
+          {
+            echo "### Mode backend APK ini 🧩"
+            echo ""
+            echo "| Bagian | Nilai |"
+            echo "|---|---|"
+            echo "| Supabase | $SUPA |"
+            echo "| Katalog | $KATALOG |"
+            echo "| Penulisan pesanan | $PESANAN |"
+            echo "| Pembayaran online | $BAYAR |"
+            echo ""
+            echo "Sakelar diubah lewat *Settings → Secrets and variables → Actions → Variables*"
+            echo "(atau \`bash tools/set_actions_variables.sh\`)."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Supabase=$SUPA katalog=$KATALOG pesanan=$PESANAN pembayaran=$BAYAR"
 
       - name: Cetak SHA penanda tangan APK (untuk Firebase)
         run: |
+          TANDA="debug key (android/debug.keystore)"
+          if [ "${{ steps.ks.outputs.ada }}" = "true" ]; then TANDA="KUNCI RILIS (secrets)"; fi
+          echo "Ditandatangani: $TANDA"
           APK_SHA1="$(keytool -printcert -jarfile build/app/outputs/flutter-apk/app-release.apk 2>/dev/null | grep -i 'SHA1:' | head -1)"
           APK_SHA256="$(keytool -printcert -jarfile build/app/outputs/flutter-apk/app-release.apk 2>/dev/null | grep -i 'SHA256:' | head -1)"
           KS_SHA1="$(keytool -list -v -keystore android/debug.keystore -storepass android -alias androiddebugkey 2>/dev/null | grep -Eo '([0-9A-Fa-f]{2}:){19}[0-9A-Fa-f]{2}' | head -1)"
@@ -85,42 +242,191 @@ jobs:
             echo "(Harus sama dengan \`android/SHA_FINGERPRINTS.txt\`. Detail: PANDUAN_FIREBASE.md langkah 4.)"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: flutter build appbundle --release (khusus Play Store)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.aab }}
+        env:
+          APP_VERSION: ${{ steps.ver.outputs.full }}
+          SB_URL: ${{ vars.SUPABASE_URL }}
+          SB_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+          SB_CATALOG: ${{ vars.CATALOG_SOURCE }}
+          SB_BOOKING: ${{ vars.BOOKING_WRITE }}
+          SB_PAYMENTS: ${{ vars.PAYMENTS_ENABLED }}
+        run: |
+          if [ "${{ steps.ks.outputs.ada }}" != "true" ]; then
+            echo "::error title=Keystore rilis belum ada::AAB untuk Play Store wajib bertanda tangan kunci rilis. Jalankan 'bash tools/set_keystore_secrets.sh' lebih dulu (PANDUAN_BUILD_APK.md §3)."
+            exit 1
+          fi
+          DEFINES=()
+          if [ -n "$APP_VERSION" ]; then DEFINES+=("--dart-define=APP_VERSION=$APP_VERSION"); fi
+          if [ -n "$SB_URL" ]; then DEFINES+=("--dart-define=SUPABASE_URL=$SB_URL"); fi
+          if [ -n "$SB_KEY" ]; then DEFINES+=("--dart-define=SUPABASE_ANON_KEY=$SB_KEY"); fi
+          if [ -n "$SB_CATALOG" ]; then DEFINES+=("--dart-define=CATALOG_SOURCE=$SB_CATALOG"); fi
+          if [ -n "$SB_BOOKING" ]; then DEFINES+=("--dart-define=BOOKING_WRITE=$SB_BOOKING"); fi
+          if [ -n "$SB_PAYMENTS" ]; then DEFINES+=("--dart-define=PAYMENTS_ENABLED=$SB_PAYMENTS"); fi
+          set +e
+          flutter build appbundle --release \
+            --obfuscate --split-debug-info=build/symbols "${DEFINES[@]}" 2>&1 | tee /tmp/aab.log
+          STATUS=${PIPESTATUS[0]}
+          set -e
+          if [ "$STATUS" -ne 0 ]; then
+            echo "::error title=Gagal membangun AAB::$(grep -iE 'error|exception|failed|what went wrong' /tmp/aab.log | grep -viE 'warning|deprecat' | tail -6 | tr '\n' '~' | cut -c1-800)"
+            exit "$STATUS"
+          fi
+          # Simbol debug (untuk membaca stack trace AAB yang ter-obfuscate).
+          if [ -d build/symbols ]; then
+            zip -qr "symbols-rara-v${APP_VERSION:-dev}.zip" build/symbols
+          fi
+          {
+            echo "### AAB rilis siap untuk Play Store 🎯"
+            echo ""
+            echo '- Unduh artifact `RaraTravel-v${{ steps.ver.outputs.version }}-release-aab`.'
+            echo '- Simpan juga `symbols-rara-*.zip` untuk membaca stack trace rilis.'
+            echo '- Unggah lewat **Play Console → Test dan rilis → Pengujian tertutup** (bukan langsung produksi).'
+            echo '- Setelah unggah pertama, salin **SHA-256 Play App Signing** ke Firebase (RILIS_PRODUKSI.md poin 3).'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Unggah AAB + symbols sebagai artifact workflow
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.aab }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: RaraTravel-v${{ steps.ver.outputs.version }}-release-aab
+          path: |
+            build/app/outputs/bundle/release/app-release.aab
+            symbols-rara-*.zip
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Unggah APK sebagai artifact workflow
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: RaraTravel-v${{ steps.ver.outputs.version }}-release
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 30
 
-      - name: Commit APK ke branch (folder apk/)
+      # Catat APK terbaru ke branch TANPA menyimpan berkas biner di git.
+      # Alasan: tiap APK ±60 MB dan blob git tidak pernah menyusut — menyimpan
+      # APK per versi membuat riwayat repo menggelembung tanpa batas. Unduhan
+      # permanen lewat halaman *Releases* (langkah berikutnya); berkasnya juga
+      # tetap ada sebagai artifact workflow.
+      - name: Catat tautan APK terbaru ke branch (folder apk/)
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           mkdir -p apk
-          cp build/app/outputs/flutter-apk/app-release.apk \
-            "apk/RaraTravel-v${{ steps.ver.outputs.version }}-release.apk"
-          # -f: .gitignore sengaja mengecualikan apk/ — APK hasil CI memang
-          # ingin di-commit agar mudah diambil lewat `git pull`.
-          git add -f "apk/RaraTravel-v${{ steps.ver.outputs.version }}-release.apk"
+          # Bersihkan APK/AAB lama dari indeks git (sekali saja) + dari disk.
+          TERLACAK="$(git ls-files 'apk/*.apk' 'apk/*.aab' || true)"
+          if [ -n "$TERLACAK" ]; then
+            echo "Menghapus berkas biner lama dari git:"
+            printf '%s\n' "$TERLACAK"
+            printf '%s\n' "$TERLACAK" | while IFS= read -r berkas; do
+              [ -n "$berkas" ] || continue
+              git rm -q -f --ignore-unmatch -- "$berkas" \
+                || echo "::warning::gagal menghapus $berkas dari indeks git"
+            done
+          fi
+          rm -f apk/*.apk apk/*.aab 2>/dev/null || true
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          SHA=$(sha256sum "$APK" | cut -d' ' -f1)
+          UKURAN=$(du -h "$APK" | cut -f1)
+          VERSI="${{ steps.ver.outputs.version }}"
+          TAG="build-${{ github.run_number }}-v$VERSI"
+          cat > apk/TERBARU.md <<EOF
+          # APK terbaru — Rara Travel
+
+          Berkas APK **tidak lagi disimpan di git** (tiap versi ±60 MB dan akan
+          menggelembungkan riwayat repo). Unduh dari halaman **Releases**:
+
+          - Versi: **v$VERSI** (build ${{ github.run_number }})
+          - Rilis: https://github.com/${{ github.repository }}/releases/tag/$TAG
+          - Nama berkas: \`RaraTravel-v$VERSI-release.apk\`
+          - SHA-256: \`$SHA\`
+          - Ukuran: $UKURAN
+          - Commit: \`${{ github.sha }}\`
+
+          Cara cepat mengunduh (butuh GitHub CLI):
+
+          \`\`\`bash
+          gh release download $TAG --pattern "*release.apk"
+          \`\`\`
+
+          Alternatif: tab **Actions → run terakhir → Artifacts** (30 hari).
+          EOF
+          git add -f apk/TERBARU.md
+          # `flutter pub get` bisa memperbarui pubspec.lock (dependensi baru),
+          # ikutkan agar berkas kunci tidak tertinggal basi di repo.
+          if ! git diff --quiet -- pubspec.lock; then git add pubspec.lock; fi
           if git diff --cached --quiet; then
-            echo "APK tidak berubah — tidak ada yang di-commit."
+            echo "Tidak ada perubahan untuk di-commit."
           else
-            git commit -m "CI: APK release v${{ steps.ver.outputs.version }} (build ${{ github.run_number }})"
+            git commit -m "CI: APK release v$VERSI (build ${{ github.run_number }})"
             if ! git push origin "HEAD:${{ github.ref_name }}" 2>push_err.txt; then
               echo "::error::git push gagal: $(tail -c 500 push_err.txt | tr '\n' ' ')"
               exit 1
             fi
           fi
 
+      # Salinan permanen tiap build → GitHub Releases (tidak menggelembungkan git).
+      - name: Terbitkan GitHub Release (APK + AAB)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPO="${{ github.repository }}"
+          TAG="build-${{ github.run_number }}-v${{ steps.ver.outputs.version }}"
+          APK="apk/RaraTravel-v${{ steps.ver.outputs.version }}-release.apk"
+          # APK tidak lagi di-commit, jadi ambil dari hasil build.
+          cp build/app/outputs/flutter-apk/app-release.apk "$APK"
+          ASET=("$APK")
+          CATATAN="APK release Rara Travel v${{ steps.ver.outputs.version }} (build ${{ github.run_number }})."$'\n\n'
+          CATATAN+="Commit: \`${{ github.sha }}\`"$'\n'
+          CATATAN+="Mode backend: Supabase=${{ vars.SUPABASE_URL != '' && 'terisi' || 'kosong' }}, pembayaran=${{ vars.PAYMENTS_ENABLED || 'false' }}"$'\n\n'
+          CATATAN+="Berkas: APK siap pasang (dibagikan via WA/Drive)."
+          AAB="build/app/outputs/bundle/release/app-release.aab"
+          if [ -f "$AAB" ]; then
+            ASET+=("$AAB")
+            CATATAN+=" AAB untuk Play Console."$'\n'
+          fi
+          printf '%s\n' "$CATATAN" > /tmp/catatan.md
+
+          echo "Menerbitkan Release $TAG dengan ${#ASET[@]} berkas…"
+          set +e
+          gh release create "$TAG" "${ASET[@]}" \
+            --repo "$REPO" \
+            --target "${{ github.sha }}" \
+            --title "Rara Travel v${{ steps.ver.outputs.version }} (build ${{ github.run_number }})" \
+            --notes-file /tmp/catatan.md 2>&1 | tee /tmp/rel.log
+          RC=${PIPESTATUS[0]}
+          set -e
+          if [ "$RC" -eq 0 ]; then
+            echo "Release $TAG berhasil diterbitkan."
+            exit 0
+          fi
+
+          # Jalur cadangan: REST API (kadang `gh release` ditolak kebijakan repo
+          # walau git push diizinkan).
+          echo "::warning title=gh release gagal::$(tail -3 /tmp/rel.log | tr '\n' '~')"
+          ID=$(gh api -X POST "repos/$REPO/releases" \
+                 -f tag_name="$TAG" \
+                 -f name="Rara Travel v${{ steps.ver.outputs.version }} (build ${{ github.run_number }})" \
+                 -f target_commitish="${{ github.sha }}" \
+                 -f body="$(cat /tmp/catatan.md)" \
+                 --jq .id 2>/tmp/api.log) || { echo "::error title=REST release gagal::$(tail -3 /tmp/api.log | tr '\n' '~')"; exit 0; }
+          for berkas in "${ASET[@]}"; do
+            gh api -X POST "https://uploads.github.com/repos/$REPO/releases/$ID/assets?name=$(basename "$berkas")" \
+              -H "Content-Type: application/octet-stream" \
+              --input "$berkas" >/dev/null \
+              || echo "::warning::Gagal mengunggah $berkas ke Release $ID"
+          done
+          echo "Release $TAG diterbitkan lewat REST API (id=$ID)."
+
       - name: Ringkasan
         run: |
           {
             echo "### APK siap 📦"
             echo ""
-            echo '- **Artifact workflow**: lihat bagian *Artifacts* di halaman run ini.'
-            echo "- **Commit ke branch**: \`apk/RaraTravel-v${{ steps.ver.outputs.version }}-release.apk\`"
+              echo "- **Unduhan permanen**: halaman *Releases* (per build) — lihat \`apk/TERBARU.md\` di branch ini"
+            echo "- **Artifact workflow**: bagian *Artifacts* di halaman run ini (30 hari)"
             echo ""
-            echo 'Install: kirim APK ke HP → tap → izinkan *Install unknown apps* → Install.'
+            echo 'Install: unduh APK dari *Releases* (atau artifact) → kirim ke HP → tap → izinkan *Install unknown apps* → Install.'
           } >> "$GITHUB_STEP_SUMMARY"
           ls -lh build/app/outputs/flutter-apk/

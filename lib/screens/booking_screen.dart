@@ -147,13 +147,16 @@ class _BookingScreenState extends State<BookingScreen> {
       diskon: _diskon,
       createdAt: DateTime.now().toIso8601String(),
     );
-    await BookingStorage.add(
-      booking,
-    ); // cache lokal (riwayat tetap ada offline)
-
     // ---- Server baru (PostgreSQL): harga & kursi divalidasi di sana ----
+    //
+    // Riwayat HP baru ditulis setelah percobaan ke server: kalau server
+    // MENOLAK (kursi habis, harga berubah, dsb.) tidak boleh ada "pesanan
+    // hantu" yang tersimpan di HP padahal tidak pernah dibuat. Bila server
+    // hanya TIDAK TERJANGKAU, pesanan lokal tetap sah (konfirmasi admin via
+    // WA) dan dikirim menyusul lewat outbox saat login berikutnya.
     if (BookingRepository.enabled) {
       var percobaan = 0;
+      var terkirimKeServer = false;
       while (true) {
         try {
           final hasil = await BookingRepository.create(
@@ -161,8 +164,10 @@ class _BookingScreenState extends State<BookingScreen> {
             idempotencyKey: idempotencyKey,
             userId: user.uid,
           );
-          // Pakai versi server (kode & total resmi dari database).
+          // Pakai versi server (kode & total resmi dari database). Repository
+          // sudah menyimpannya ke riwayat HP.
           booking = hasil.booking;
+          terkirimKeServer = true;
           break;
         } on ApiException catch (e) {
           if (!mounted) return;
@@ -180,14 +185,27 @@ class _BookingScreenState extends State<BookingScreen> {
             percobaan++;
             continue;
           }
+          if (_bisaLanjutOffline(e)) break; // server tak terjangkau, bukan menolak
           setState(() => _loading = false);
           _pesanError(e);
-          return;
+          return; // belum ada yang disimpan → tidak ada pesanan hantu
         } catch (_) {
           // Gagal tak terduga → lanjut jalur lama di bawah (pesanan lokal sah).
           break;
         }
       }
+
+      if (!terkirimKeServer) {
+        await BookingStorage.save(booking); // cache lokal (riwayat offline)
+        await BookingStorage.markDirty(booking.kode);
+        await BookingStorage.markDirtySb(
+          booking.kode,
+          idempotencyKey: idempotencyKey,
+        );
+      }
+    } else {
+      // Mode lokal/Firestore: riwayat HP adalah sumber utama.
+      await BookingStorage.save(booking);
     }
 
     // ---- Jalur lama (Firestore) masih jalan selama mode 'dual' ----
@@ -212,6 +230,8 @@ class _BookingScreenState extends State<BookingScreen> {
         }
       } catch (_) {
         // Gagal cloud (offline?) — pesanan lokal tetap sah, konfirmasi via WA.
+        // Masukkan outbox agar dokumen di Firestore menyusul saat online.
+        await BookingStorage.markDirty(booking.kode);
       }
     }
 
@@ -223,6 +243,15 @@ class _BookingScreenState extends State<BookingScreen> {
       ),
     );
   }
+
+  /// Server tidak terjangkau (bukan menolak pesanan): jaringan mati, timeout,
+  /// atau backend belum siap (5xx / belum dikonfigurasi). Pesanan tetap boleh
+  /// lanjut lewat jalur lokal + konfirmasi WA, sinkron menyusul via outbox.
+  static bool _bisaLanjutOffline(ApiException e) =>
+      e.code == 'network_error' ||
+      e.code == 'timeout' ||
+      e.code == 'not_configured' ||
+      e.status >= 500;
 
   /// Harga berubah di server (mis. admin memperbarui tarif). Tawarkan hitung
   /// ulang supaya pengguna tidak membayar dengan angka lama.

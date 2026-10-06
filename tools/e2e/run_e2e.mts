@@ -12,12 +12,15 @@
  *   * FCM, OAuth2 Google, dan Snap Midtrans ditiru
  *
  * Pemakaian (dari akar repositori):
- *   /tmp/venv/bin/python -c "import pgserver"     # pastikan terpasang
+ *   python3 -m venv /tmp/venv && /tmp/venv/bin/pip install pgserver "psycopg[binary]"
  *   node tools/e2e/run_e2e.mts
+ *
+ * Interpreter dicari otomatis (.venv repo → /tmp/venv → python3); bisa juga
+ * ditunjuk manual: PYTHON=/path/ke/python node tools/e2e/run_e2e.mts
  *
  * Kode keluar 1 bila ada skenario yang gagal.
  */
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createServer } from "node:net";
 import { createPublicKey, createSign, generateKeyPairSync, type KeyObject } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -34,7 +37,33 @@ const DIR_FUNGSI = process.env.E2E_FUNCTIONS_DIR;
 const FUNCTIONS = DIR_FUNGSI
   ? path.resolve(REPO, DIR_FUNGSI)
   : path.join(REPO, "supabase", "functions");
-const PYTHON = existsSync("/tmp/venv/bin/python") ? "/tmp/venv/bin/python" : "python3";
+/** Python yang dipakai menjalankan tiruan PostgREST (butuh `pgserver`).
+ *  Urutan: env PYTHON → .venv repo → /tmp/venv → python3 sistem. */
+function pilihPython(): string {
+  if (process.env.PYTHON) return process.env.PYTHON;
+  const kandidat = [
+    path.join(REPO, ".venv", "bin", "python"),
+    "/tmp/venv/bin/python",
+    path.join(REPO, ".venv", "Scripts", "python.exe"),
+  ];
+  for (const k of kandidat) if (existsSync(k)) return k;
+  return "python3";
+}
+const PYTHON = pilihPython();
+
+/** Pastikan interpreter punya `pgserver`/`psycopg` — pesan jelas sebelum uji. */
+function periksaPython(): void {
+  const hasil = spawnSync(PYTHON, ["-c", "import pgserver, psycopg"], { encoding: "utf8" });
+  if (hasil.status === 0) return;
+  console.error(
+    `Python yang dipilih (${PYTHON}) belum punya paket uji.\n` +
+      `Pesan: ${(hasil.stderr ?? "").trim().split("\n").pop()}\n\n` +
+      "Pasang sekali (dari akar repositori):\n" +
+      '  python3 -m venv /tmp/venv && /tmp/venv/bin/pip install pgserver "psycopg[binary]"\n' +
+      "atau tunjuk interpreter lain: PYTHON=/path/ke/python node tools/e2e/run_e2e.mts",
+  );
+  process.exit(1);
+}
 const PROJECT = "raratravel-uji";
 const KID = "uji-kid";
 
@@ -163,7 +192,11 @@ async function nyalakanBridge(): Promise<void> {
   }) as ChildProcessWithoutNullStreams;
 
   let keluaran = "";
-  bridge.stderr.on("data", (buf) => process.stderr.write(`[bridge] ${buf}`));
+  let galatBridge = "";
+  bridge.stderr.on("data", (buf) => {
+    galatBridge += buf.toString();
+    process.stderr.write(`[bridge] ${buf}`);
+  });
   bridge.stdout.on("data", (buf) => {
     keluaran += buf.toString();
   });
@@ -174,10 +207,17 @@ async function nyalakanBridge(): Promise<void> {
       basis = `http://127.0.0.1:${port}`;
       return;
     }
-    if (bridge.exitCode !== null) throw new Error(`bridge berhenti: ${keluaran}`);
+    if (bridge.exitCode !== null) {
+      const ekor = galatBridge.trim().split("\n").slice(-6).join("\n");
+      throw new Error(
+        `bridge berhenti (keluar ${bridge.exitCode}) memakai ${PYTHON}` +
+          `${keluaran ? `\nkeluaran: ${keluaran.trim()}` : ""}` +
+          `${ekor ? `\njejak:\n${ekor}` : ""}`,
+      );
+    }
     await delay(200);
   }
-  throw new Error(`bridge tidak siap dalam 120 detik: ${keluaran}`);
+  throw new Error("bridge tidak siap dalam 120 detik" + (keluaran ? `: ${keluaran}` : ""));
 }
 
 async function sql(perintah: string): Promise<unknown> {
@@ -701,6 +741,89 @@ async function jalankanSkenario(): Promise<void> {
     tegas(detail.status === 404, "detail pesanan orang lain harus 404", detail);
   });
 
+  // Hapus akun (hak subjek data): data pribadi harus benar-benar hilang dari
+  // server, dan pengguna lain tidak boleh bisa menghapus data orang lain.
+  await uji("auth-user-sync: purge menghapus seluruh data pribadi", async () => {
+    // Token khusus (uid berbeda) supaya purge skenario ini tidak menghapus data
+    // yang dipakai skenario lain.
+    const tokenHapus = tokenFirebase("uid-uji-hapus-akun", { phone: "+6281200000077" });
+    const pelanggan = await panggil("auth-user-sync", {
+      token: tokenHapus,
+      body: { action: "sync", full_name: "Pelanggan Purge", phone: "08120000077" },
+    });
+    tegas(pelanggan.status === 200, "sync pelanggan", pelanggan);
+
+    // Pesanan miliknya + bukti transfer terdaftar.
+    const pesanan = await buatPesanan(tokenHapus, { seats: 1 });
+    tegas(
+      pesanan.status === 200 || pesanan.status === 201,
+      "pesanan dibuat",
+      pesanan,
+    );
+    const kodePurge = pesanan.json.booking?.kode ?? pesanan.json.kode;
+    tegas(typeof kodePurge === "string", "kode pesanan ada", pesanan.json);
+
+    const unggah = await panggil("storage-sign", {
+      token: tokenHapus,
+      body: {
+        action: "upload-url",
+        kind: "payment_proof",
+        kode: kodePurge,
+        filename: "bukti.jpg",
+        content_type: "image/jpeg",
+      },
+    });
+    tegas([200, 201].includes(unggah.status), "tautan unggah bukti", unggah);
+
+    // Pengguna lain TIDAK boleh menghapus data pemilik pesanan.
+    const cobaOrangLain = await panggil("auth-user-sync", {
+      token: tokenLain,
+      body: { action: "purge" },
+    });
+    tegas(cobaOrangLain.status === 200, "purge akun sendiri tetap 200", cobaOrangLain);
+    const pesananSetelahOrangLain = await panggil("manage-booking", {
+      token: tokenHapus,
+      body: { action: "detail", kode: kodePurge },
+    });
+    tegas(
+      pesananSetelahOrangLain.status === 200,
+      "data pemilik TIDAK terhapus oleh pengguna lain",
+      pesananSetelahOrangLain,
+    );
+
+    // Pemilik menghapus akunnya → seluruh jejak hilang.
+    const hapus = await panggil("auth-user-sync", { token: tokenHapus, body: { action: "purge" } });
+    tegas(hapus.status === 200, "purge 200", hapus);
+    tegas(hapus.json.deleted === true, "purge melaporkan deleted=true", hapus.json);
+    tegas((hapus.json.bookings ?? 0) >= 1, "pesanan ikut terhapus", hapus.json);
+
+    // Bukti paling kuat: baris database benar-benar hilang.
+    const sisaBaris = (await sql(
+      `select count(*)::int as n from public.bookings where kode = '${kodePurge}'`,
+    )) as Array<{ n: number }>;
+    tegas(sisaBaris[0].n === 0, "baris pesanan hilang dari database", sisaBaris);
+    const sisaUser = (await sql(
+      "select count(*)::int as n from public.users where firebase_uid = 'uid-uji-hapus-akun'",
+    )) as Array<{ n: number }>;
+    tegas(sisaUser[0].n === 0, "baris pengguna hilang dari database", sisaUser);
+    const sisaBukti = (await sql(
+      `select count(*)::int as n from storage.objects where split_part(name, '/', 2) = '${kodePurge}'`,
+    )) as Array<{ n: number }>;
+    tegas(sisaBukti[0].n === 0, "berkas bukti transfer hilang dari Storage", sisaBukti);
+
+    // API: akun sudah tidak dikenali lagi (bukan 200 dengan data).
+    const sisa = await panggil("manage-booking", {
+      token: tokenHapus,
+      body: { action: "detail", kode: kodePurge },
+    });
+    tegas(sisa.status !== 200, "pesanan tidak lagi bisa dibuka", sisa);
+
+    // Panggil ulang: idempoten, bukan error.
+    const ulang = await panggil("auth-user-sync", { token: tokenHapus, body: { action: "purge" } });
+    tegas(ulang.status === 200, "purge ulang 200", ulang);
+    tegas(ulang.json.deleted === false, "purge ulang melaporkan tidak ada lagi", ulang.json);
+  });
+
   await uji("Kunci Supabase model baru (sb_secret_ / sb_publishable_) diterima", async () => {
     // Proyek Supabase baru hanya menyediakan kunci model baru: kunci server
     // datang sebagai kamus JSON SUPABASE_SECRET_KEYS (tanpa service_role lama).
@@ -780,6 +903,7 @@ async function buatUlang(idempotencyKey: string, token: string): Promise<HasilPa
 async function main(): Promise<void> {
   buatKunci();
   pasangShimFetch();
+  periksaPython();
   await nyalakanBridge();
 
   process.env.SUPABASE_URL = basis;

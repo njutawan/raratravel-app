@@ -13,17 +13,24 @@ name: Backend check
 #   * 18 skenario end-to-end: Edge Function dijalankan sungguhan (tools/e2e)
 #   * berkas siap-tempel Dashboard (supabase/deploy-dashboard) tidak basi,
 #     dan bundelnya menjalani 18 skenario yang sama
+#   * firestore.rules diuji di Firestore Emulator (13 pengujian keamanan):
+#     pesanan terikat pemiliknya, tidak bisa dititipkan/dialihkan, dan
+#     rateLimits hanya untuk server
 
 on:
   push:
     paths:
       - "supabase/**"
       - "tools/**"
+      - "firestore.rules"
+      - "firebase.json"
       - ".github/workflows/backend-check.yml"
   pull_request:
     paths:
       - "supabase/**"
       - "tools/**"
+      - "firestore.rules"
+      - "firebase.json"
       - ".github/workflows/backend-check.yml"
   workflow_dispatch:
 
@@ -33,13 +40,13 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           # Node 22 diperlukan: menjalankan berkas .ts langsung (type stripping).
           node-version: "22"
@@ -73,3 +80,75 @@ jobs:
 
       - name: End-to-end berkas siap-tempel Dashboard
         run: E2E_FUNCTIONS_DIR=supabase/deploy-dashboard node tools/e2e/run_e2e.mts
+
+  firestore-rules:
+    name: Aturan Firestore (emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      # Emulator Firestore berjalan di JVM.
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Pasang firebase-tools + SDK uji aturan
+        run: npm install --no-save firebase-tools@15 firebase@12 @firebase/rules-unit-testing@5
+
+      # Kalau job ini merah, JANGAN publish firestore.rules ke Firebase Console.
+      - name: Uji firestore.rules (13 pengujian keamanan)
+        id: rules
+        continue-on-error: true
+        env:
+          CI: "true"
+        run: |
+          set -o pipefail
+          npx firebase emulators:exec --only firestore --project demo-raratravel \
+            "node tools/firestore/rules_test.mjs" 2>&1 | tee rules-emulator.log
+
+      # Anotasi + ringkasan supaya sebab kegagalan terlihat tanpa membuka log
+      # mentah (`gh run view` menampilkannya).
+      - name: Laporkan hasil uji aturan
+        if: always()
+        run: |
+          {
+            echo "### Aturan Firestore (emulator)"
+            echo ""
+            echo "Status: **${{ steps.rules.outcome }}**"
+            echo ""
+            echo '```'
+            if [ -f rules-result.txt ]; then
+              cat rules-result.txt
+            else
+              tail -n 40 rules-emulator.log 2>/dev/null || echo "(log belum ada)"
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          # Utamakan ringkasan bersih dari skrip uji (berisi SEBAB + JEJAK).
+          LAPOR=rules-result.txt
+          [ -f "$LAPOR" ] || LAPOR=rules-emulator.log
+          if [ -f "$LAPOR" ]; then
+            grep -aE "GAGAL|SEBAB|JEJAK|❌|Error" "$LAPOR" | head -n 30 | \
+              while IFS= read -r baris; do
+                echo "::error::$(printf '%s' "$baris" | cut -c1-400)"
+              done
+          fi
+          if [ "${{ steps.rules.outcome }}" != "success" ]; then
+            echo "::error title=Aturan Firestore::Uji emulator gagal — JANGAN publish firestore.rules."
+            exit 1
+          fi
+
+      - name: Simpan log uji aturan
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: firestore-rules-log
+          path: rules-emulator.log
+          if-no-files-found: warn

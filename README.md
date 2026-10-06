@@ -19,11 +19,12 @@ riwayat pesanan offline, dan konfirmasi otomatis via WhatsApp admin
 | 📄 Detail Rute | Jadwal, armada, fasilitas, deskripsi, pilih tanggal & jam |
 | 📝 Booking | Form nama, WA, alamat jemput/antar, jumlah kursi, metode bayar, hitung total otomatis |
 | 🎫 Tiket | Kode booking unik + tombol **konfirmasi via WhatsApp** (pesan terisi otomatis) |
+| 💳 Pembayaran | Cek tagihan (total/dibayar/sisa) + riwayat, bayar online (QRIS/VA/e-wallet via Midtrans) atau transfer manual — aktif hanya bila build memakai `PAYMENTS_ENABLED=true` |
 | 🧾 Pesananku | Riwayat tersimpan di HP (offline), detail, batalkan, hapus |
 | 🚗 Sewa Mobil | Calya–Elf Long, harga +sopir & lepas kunci, pesan via WA |
 | 🏝️ Paket Wisata | Bromo, Ijen, Bali, Nusa Penida, Papuma + tombol tanya via WA |
 | 📦 Kirim Paket | Estimasi ongkir otomatis + pesan jemput via WA |
-| 👤 Profil | Tentang kami, ketentuan/refund, kontak, sosmed, website |
+| 👤 Profil | Tentang kami, ketentuan/refund, kontak, sosmed, website, **preferensi mata uang & bahasa** |
 
 **Tanpa server / tanpa login** — cocok sebagai MVP. Semua pesanan masuk ke
 WhatsApp admin dalam format rapi. Nanti bisa disambung ke Firebase/API.
@@ -85,7 +86,7 @@ Langkah bergambarnya (termasuk tips PowerShell) ada di `MIGRASI_SUPABASE.md` §2
 Di Windows ada dua pembantu:
 
 ```powershell
-.\tools\paste_migrations.ps1                              # panduan menempel 11 migrasi
+.\tools\paste_migrations.ps1                              # panduan menempel 12 migrasi
 .\tools\verify_supabase.ps1 -AnonKey "<kunci publik>"      # periksa kesiapan proyek
 ``` Jangan commit key ke repository — konfigurasi
 aplikasi diberikan saat build:
@@ -108,7 +109,17 @@ flutter run --dart-define=SUPABASE_URL=https://PROJECT.supabase.co `
 
 Selama `BOOKING_WRITE=dual`, pesanan **tetap** ditulis ke Firestore sehingga
 tidak ada risiko kehilangan data; penulisan itu baru dimatikan (`supabase`)
-setelah seluruh langkah migrasi lolos checklist.
+setelah seluruh langkah migrasi lolos checklist. Pesanan yang gagal terkirim
+saat booking (jaringan putus / server baru belum siap) disimpan lebih dulu di
+HP lalu dikirim menyusul saat login berikutnya — outbox `rara_dirty_sb_v1`.
+
+**Pembayaran online** (tombol "Bayar Sekarang" di tiket & detail pesanan)
+muncul bila `PAYMENTS_ENABLED=true` **dan** `SUPABASE_URL`/`SUPABASE_ANON_KEY`
+terisi. Untuk APK hasil CI, isi **Settings → Secrets and variables → Actions →
+Variables**: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, lalu opsional
+`CATALOG_SOURCE`, `BOOKING_WRITE`, `PAYMENTS_ENABLED` (lihat
+`.github/workflows/build-apk.yml`). Dibiarkan kosong = APK tetap memakai
+katalog lokal + Firestore seperti sebelumnya.
 
 Berkas terkait:
 
@@ -119,20 +130,40 @@ Berkas terkait:
 | `supabase/deploy-dashboard/` | 10 Edge Function siap tempel untuk Dashboard (tanpa CLI) |
 | `tools/verify_supabase.ps1` | pemeriksa kesiapan proyek Supabase (Windows) |
 | `.env.supabase.example` | contoh setelan lokal (salin jadi `.env.supabase`, jangan di-commit) |
-| `supabase/migrations/*.sql` | 11 berkas migrasi (skema, RPC, trigger, seed, storage, admin) |
+| `supabase/migrations/*.sql` | 12 berkas migrasi (skema, RPC, trigger, seed, storage, admin, hapus-akun) |
 | `supabase/functions/` | 10 Edge Function (auth sync, katalog, booking, bayar, notifikasi, admin) |
 | `lib/config/backend_config.dart` | sakelar migrasi di sisi aplikasi |
 | `lib/repositories/` | jembatan aplikasi → Edge Function |
+| `RILIS_PRODUKSI.md` | checklist rilis: rules, App Check, SHA, uji HP, listing Play, langkah 12 |
+| `tools/set_actions_variables.sh` | isi *Repository variables* sekali jalan (`--check`, `--build`) — inilah yang menyalakan tombol pembayaran di APK. Versi Windows: `tools/set_actions_variables.ps1` |
+| `tools/firestore/rules_test.mjs` | 13 uji keamanan `firestore.rules` di Firestore Emulator (H-1: titip pesanan ke akun lain, alih kepemilikan, dll.) |
+| `tools/check_firestore_rules.sh` | jalankan uji rules di komputer sendiri (butuh Java; CI sudah menjalankannya otomatis) |
+| `tools/set_keystore_secrets.sh` | simpan keystore rilis ke GitHub Secrets agar CI bisa membangun AAB bertanda tangan untuk Play (padanan Windows: `.ps1`) |
+| `apk/TERBARU.md` | penunjuk APK terbaru: tautan *Releases*, ukuran, dan SHA-256. Berkas APK **tidak** disimpan di git (dulu ±60 MB per versi) |
 
 Uji backend tanpa Docker/Supabase CLI (butuh Python 3 + `pgserver`):
 
 ```bash
 python3 -m venv /tmp/venv
 /tmp/venv/bin/pip install pgserver "psycopg[binary]"   # sekali saja
-/tmp/venv/bin/python tools/db_check.py      # migrasi + 17 kelompok uji + kecocokan RPC
+/tmp/venv/bin/python tools/db_check.py      # migrasi + 18 kelompok uji + kecocokan RPC
 node tools/ts_check.js                      # impor & nama ekspor Edge Function
 node tools/e2e/run_e2e.mts                  # Edge Function benar-benar dijalankan
 ```
+
+Jalankan juga uji aturan Firestore di emulator (butuh Java — sudah ada bersama
+Android Studio; di CI jalan otomatis di workflow **Backend check**):
+
+```bash
+bash tools/check_firestore_rules.sh        # 13 uji keamanan firestore.rules
+```
+
+Di GitHub, setiap push juga menjalankan **flutter test**
+(`test/formatters_test.dart`, `test/models_test.dart`) dan `flutter analyze`
+sebelum APK dibangun — jadi galat kode ketahuan lebih awal. Ringkasan workflow
+**Build APK** memuat tabel *“Mode backend APK ini”* (Supabase, katalog, penulisan
+pesanan, pembayaran) supaya bisa dipastikan APK yang diunduh memang build yang
+diinginkan.
 
 `run_e2e.mts` menjalankan kesepuluh Edge Function di atas PostgreSQL 16 asli
 (tiruan PostgREST + Storage) dengan token Firebase, FCM, dan Snap yang ditiru —

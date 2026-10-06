@@ -50,3 +50,9 @@ ui-debug.log
 # OS
 .DS_Store
 Thumbs.db
+
+# Keluaran uji aturan Firestore (tools/check_firestore_rules.sh)
+rules-result.txt
+rules-emulator.log
+.firebase/
+firebase-debug.log

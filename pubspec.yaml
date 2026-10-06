@@ -9,13 +9,29 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  firebase_auth: ^5.3.0
-  firebase_core: ^3.6.0
-  firebase_messaging: ^15.1.0
-  cloud_firestore: ^5.4.0
-  google_sign_in: ^6.2.0
-  firebase_app_check: ^0.3.0
-  intl: ^0.19.0
+  # Terjemahan bawaan Flutter (nama hari/bulan + dialog tanggal, dll.)
+  flutter_localizations:
+    sdk: flutter
+  # Pilih foto bukti transfer dari galeri/kamera.
+  image_picker: ^1.1.2
+  # Firebase (FlutterFire) generasi firebase_core 4.x — dipakai SEMUA paket di
+  # bawah ini; jangan naikkan salah satu sendirian, karena tiap paket mematok
+  # firebase_core ^4.14.0. Mode aplikasi tetap sama (Supabase jadi backend
+  # utama; Firebase untuk login OTP, notifikasi, App Check, Crashlytics).
+  firebase_auth: ^6.7.0
+  firebase_core: ^4.14.0
+  firebase_messaging: ^16.7.0
+  cloud_firestore: ^6.10.0
+  firebase_app_check: ^0.4.8
+  # google_sign_in 7.x = API baru (singleton + initialize/authenticate).
+  # Butuh OAuth client *web* di google-services.json → sudah terpenuhi.
+  google_sign_in: ^7.2.0
+  # Pelaporan crash otomatis (dipakai hanya di build rilis — lihat
+  # lib/services/firebase_bootstrap.dart).
+  firebase_crashlytics: ^5.4.0
+  # Versi intl dikunci oleh flutter_localizations (SDK Flutter), jadi harus
+  # mengikuti pin SDK — jangan diturunkan/dinaikkan sendiri.
+  intl: ^0.20.2
   shared_preferences: ^2.2.3
   url_launcher: ^6.2.5
   supabase_flutter: ^2.8.4

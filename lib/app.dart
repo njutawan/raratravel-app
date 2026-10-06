@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'services/preferences_service.dart';
 import 'theme/app_theme.dart';
 import 'screens/splash_screen.dart';
 import 'screens/home_screen.dart';
@@ -12,17 +14,44 @@ class AppNavigator {
 }
 
 /// Root aplikasi + navigasi bawah.
-class RaraTravelApp extends StatelessWidget {
+///
+/// Preferensi pengguna (mata uang & bahasa) dibaca dari HP saat start, lalu
+/// dipakai untuk: simbol & pemisah ribuan pada harga (Formatters.idr) serta
+/// locale MaterialApp — sehingga nama hari/bulan dan dialog pemilih tanggal
+/// tampil dalam bahasa Indonesia, bukan bahasa Inggris bawaan.
+class RaraTravelApp extends StatefulWidget {
   const RaraTravelApp({super.key});
 
   @override
+  State<RaraTravelApp> createState() => _RaraTravelAppState();
+}
+
+class _RaraTravelAppState extends State<RaraTravelApp> {
+  @override
+  void initState() {
+    super.initState();
+    // Aman gagal: bila pembacaan lambat/gagal, nilai bawaan (IDR/id) dipakai.
+    PreferencesService.muatPreferensi();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Rara Travel & Tour',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.light,
-      navigatorKey: AppNavigator.key,
-      home: const SplashScreen(),
+    return ValueListenableBuilder<String>(
+      valueListenable: PreferencesService.bahasa,
+      builder: (context, bahasa, _) => MaterialApp(
+        title: 'Rara Travel & Tour',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light,
+        locale: Locale(bahasa),
+        supportedLocales: const [Locale('id'), Locale('en')],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        navigatorKey: AppNavigator.key,
+        home: const SplashScreen(),
+      ),
     );
   }
 }

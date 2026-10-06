@@ -117,13 +117,16 @@ class PaymentRepository {
 
   /// Unggah bukti transfer: minta tautan bertanda tangan, lalu kirim berkas.
   ///
-  /// Mengembalikan path berkas di Storage (untuk dicatat admin).
+  /// Mengembalikan path berkas di Storage (untuk dicatat admin). Berkas privat
+  /// (bucket `payment-proofs`); tautan unduhnya dibuat admin lewat
+  /// `storage-sign` sehingga bukti tidak bisa dibuka orang lain.
   static Future<String> unggahBuktiTransfer({
     required String kode,
     required Uint8List bytes,
     String filename = 'bukti-transfer.jpg',
-    String contentType = 'image/jpeg',
+    String? contentType,
   }) async {
+    final mime = contentType ?? _mimeDariNama(filename);
     final tender = await EdgeClient.invoke(
       'storage-sign',
       body: {
@@ -131,7 +134,7 @@ class PaymentRepository {
         'kind': 'payment_proof',
         'kode': kode,
         'filename': filename,
-        'content_type': contentType,
+        'content_type': mime,
       },
       auth: true,
     );
@@ -148,7 +151,7 @@ class PaymentRepository {
     final client = HttpClient();
     try {
       final request = await client.putUrl(Uri.parse(uploadUrl));
-      request.headers.set('Content-Type', contentType);
+      request.headers.set('Content-Type', mime);
       request.add(bytes);
       final response = await request.close();
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -163,5 +166,24 @@ class PaymentRepository {
     }
 
     return path;
+  }
+}
+
+/// Jenis berkas dari ekstensi nama berkas (unggahan bukti transfer).
+String _mimeDariNama(String nama) {
+  final ext = nama.toLowerCase().split('.').last;
+  switch (ext) {
+    case 'png':
+      return 'image/png';
+    case 'webp':
+      return 'image/webp';
+    case 'pdf':
+      return 'application/pdf';
+    case 'heic':
+      return 'image/heic';
+    case 'jpg':
+    case 'jpeg':
+    default:
+      return 'image/jpeg';
   }
 }

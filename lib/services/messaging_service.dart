@@ -24,7 +24,31 @@ Future<void> _pesanBackground(RemoteMessage message) async {
 /// Murni push (nol polling, nol timer) → dampak baterai praktis nol.
 class MessagingService {
   static const _tokenKey = 'rara_fcm_token_v1';
-  static const _appVersion = '1.0.0+1';
+
+  /// Versi aplikasi yang dilaporkan ke server (`user_devices.app_version`).
+  ///
+  /// CI mengisinya otomatis dari pubspec.yaml
+  /// (`--dart-define=APP_VERSION=<versi pubspec>`); nilai bawaan hanya dipakai
+  /// build lokal — samakan dengan pubspec.yaml bila versinya dinaikkan.
+  static const String _appVersion =
+      String.fromEnvironment('APP_VERSION', defaultValue: '1.0.0+1');
+
+  /// Versi aplikasi yang sedang berjalan (untuk kartu diagnostik di Profil).
+  static String get appVersion => _appVersion;
+
+  /// Token FCM perangkat ini sudah tersimpan (pernah terdaftar)?
+  ///
+  /// Dipakai kartu "Ringkasan backend" untuk memastikan push notification
+  /// benar-benar siap di HP tempat uji rilis.
+  static Future<bool> tokenTerdaftar() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return (prefs.getString(_tokenKey) ?? '').isNotEmpty;
+    } catch (e) {
+      debugPrint('Baca token FCM gagal: $e');
+      return false;
+    }
+  }
 
   /// Panggil sekali saat start (hanya bila Firebase siap).
   static Future<void> init() async {

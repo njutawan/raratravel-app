@@ -20,6 +20,22 @@ upload ke Google Play Store. Semua perintah dijalankan dari folder
 
 ---
 
+## ⬇️ Mengambil APK hasil CI (sejak build 30)
+
+APK **tidak lagi disimpan di git** (tiap versi ±60 MB dan akan menggelembungkan
+riwayat repo). Setiap build otomatis diterbitkan sebagai **GitHub Release**:
+
+```bash
+gh release list --limit 5                          # daftar build terbaru
+gh release download build-30-v1.0.0 --pattern "*release.apk"
+```
+
+- Lewat browser: tab **Releases** di halaman repo → pilih build → unduh `.apk`.
+- Tautan + SHA-256 versi terbaru selalu ada di `apk/TERBARU.md` pada branch.
+- Cadangan: tab **Actions → run terakhir → Artifacts** (disimpan 30 hari).
+
+---
+
 ## ⚡⚡ Cara tercepat: build di GitHub Actions (tanpa install apa pun)
 
 Repo ini punya workflow `.github/workflows/build-apk.yml`. Setiap push ke
@@ -175,6 +191,31 @@ storeFile=C:/Users/NAMA-KAMU/upload-keystore.jks
 > Di Mac/Linux: `storeFile=/Users/nama/upload-keystore.jks`.
 
 ### 3c. Build App Bundle (.aab)
+
+**Cara A — lewat GitHub Actions (tanpa install Flutter, disarankan):**
+
+1. Simpan keystore ke Secrets sekali saja:
+
+   ```bash
+   bash tools/set_keystore_secrets.sh --keystore ~/upload-keystore.jks \
+        --alias rara-travel --build        # Git Bash juga jalan di Windows
+   ```
+   ```powershell
+   .\tools\set_keystore_secrets.ps1 -Keystore $env:USERPROFILE\upload-keystore.jks `
+        -Alias rara-travel -Build
+   ```
+
+2. Kalau perlu membangun ulang nanti: **Actions → Build APK → Run workflow →
+   centang `aab`** (atau `gh workflow run build-apk.yml -f aab=true`).
+3. Unduh artifact **`RaraTravel-v…-release-aab`** — isinya `app-release.aab`
+   + `symbols-rara-*.zip` (untuk membaca crash rilis yang ter-obfuscate).
+   Skrip di atas mencetak **SHA-1/SHA-256 kunci upload**; daftarkan ke Firebase
+   Console sebelum membagikan aplikasinya.
+
+> Tanpa secrets keystore, tombol `aab` akan berhenti dengan pesan jelas —
+> APK biasa tetap dibangun seperti sebelumnya (ditandatangani debug key).
+
+**Cara B — di komputer sendiri:**
 
 ```bash
 flutter build appbundle --release

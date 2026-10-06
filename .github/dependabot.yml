@@ -1,0 +1,29 @@
+# Dependabot — usulan pembaruan otomatis.
+#
+# Sengaja HANYA untuk GitHub Actions: versi action yang ketinggalan Node 20
+# menghasilkan peringatan deprecation di setiap run (dan akhirnya gagal saat
+# dukungan Node 20 dicabut). PR-nya kecil dan mudah diperiksa.
+#
+# Paket Dart/Flutter TIDAK diaktifkan dulu: upgrade SDK mayor (firebase_auth 6,
+# cloud_firestore 6, firebase_core 4, google_sign_in 7 — catatan M-4 di
+# LAPORAN_KEAMANAN.md) butuh uji regresi di HP fisik, tidak boleh ikut-ikutan
+# rilis. Aktifkan blok `pub` di bawah setelah upgrade manual itu selesai.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "CI"
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # - package-ecosystem: pub
+  #   directory: /
+  #   schedule:
+  #     interval: monthly
+  #   open-pull-requests-limit: 3

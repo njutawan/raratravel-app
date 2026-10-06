@@ -20,8 +20,6 @@ class BookingPage {
     required this.offset,
   });
 
-  bool get hasMore => offset + items.length < total;
-
   factory BookingPage.fromApi(Map<String, dynamic> json, {String userId = ''}) {
     final daftar = (json['items'] as List?) ?? const [];
     return BookingPage(
@@ -143,14 +141,6 @@ class BookingRepository {
     await BookingStorage.save(hasilBooking);
     return hasilBooking;
   }
-
-  /// Pantau pembayaran sebuah pesanan (daftar tagihan + sisa).
-  static Future<Map<String, dynamic>> paymentStatus(String kode) =>
-      EdgeClient.invoke(
-        'manage-booking',
-        body: {'action': 'payment-status', 'kode': kode},
-        auth: true,
-      );
 
   /// Stream riwayat: tampilkan riwayat HP lebih dulu, lalu data server.
   ///

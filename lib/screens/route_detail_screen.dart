@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/travel_route.dart';
+import '../repositories/catalog_repository.dart';
 import '../services/whatsapp_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/formatters.dart';
@@ -26,11 +27,38 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
   late String _jam;
   late DateTime _tanggal;
 
+  /// Versi rute yang sedang ditampilkan. Dimulai dari data yang dibawa
+  /// halaman sebelumnya, lalu diperbarui dari server (harga, jadwal,
+  /// fasilitas, deskripsi) agar perubahan admin ikut terlihat.
+  late TravelRoute _rute;
+
   @override
   void initState() {
     super.initState();
-    _jam = widget.route.jadwal.first;
+    _rute = widget.route;
+    _jam = _rute.jadwal.isNotEmpty ? _rute.jadwal.first : '';
     _tanggal = widget.tanggal;
+    _muatDetailServer();
+  }
+
+  /// Ambil detail terbaru dari katalog server (Supabase).
+  ///
+  /// Tanpa ini, harga/jadwal/deskripsi yang diubah admin tidak pernah sampai
+  /// ke layar ini — halaman hanya memakai data dari daftar rute sebelumnya.
+  /// Gagal / katalog lokal / offline → data lama tetap dipakai (tanpa error).
+  Future<void> _muatDetailServer() async {
+    if (!CatalogRepository.enabled || _rute.id.isEmpty) return;
+    try {
+      final detail = await CatalogRepository.routeDetail(_rute.id);
+      if (!mounted || detail == null) return;
+      setState(() {
+        _rute = detail;
+        // Jam yang sedang dipilih bisa saja sudah tidak ada di jadwal baru.
+        if (detail.jadwal.isNotEmpty && !detail.jadwal.contains(_jam)) {
+          _jam = detail.jadwal.first;
+        }
+      });
+    } catch (_) {}
   }
 
   Future<void> _pickDate() async {
@@ -45,7 +73,7 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final r = widget.route;
+    final r = _rute;
     return Scaffold(
       appBar: AppBar(title: Text(r.title)),
       body: ListView(

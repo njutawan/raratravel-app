@@ -2,16 +2,33 @@ import 'dart:math';
 
 import 'package:intl/intl.dart';
 
+import '../services/preferences_service.dart';
+
 /// Helper format mata uang & tanggal Indonesia.
 class Formatters {
-  static final NumberFormat _idr = NumberFormat.currency(
+  /// Simbol per kode mata uang yang didukung (lihat PreferencesService).
+  static const Map<String, String> _simbol = {'IDR': 'Rp'};
+
+  static NumberFormat _buatFormat(String kode) => NumberFormat.currency(
     locale: 'id_ID',
-    symbol: 'Rp',
+    symbol: _simbol[kode] ?? kode,
     decimalDigits: 0,
   );
 
-  /// 450000 -> "Rp450.000"
-  static String idr(num value) => _idr.format(value);
+  // Di-cache per kode mata uang; preferensi pengguna hanya berubah sesekali,
+  // jadi format tidak perlu dibuat ulang tiap pemanggilan.
+  static final Map<String, NumberFormat> _formatCache = {
+    PreferencesService.defaultMataUang:
+        _buatFormat(PreferencesService.defaultMataUang),
+  };
+
+  static NumberFormat get _fmt => _formatCache.putIfAbsent(
+    PreferencesService.mataUang.value,
+    () => _buatFormat(PreferencesService.mataUang.value),
+  );
+
+  /// 450000 -> "Rp450.000" (simbol mengikuti preferensi mata uang pengguna)
+  static String idr(num value) => _fmt.format(value);
 
   // Di-cache agar tidak alokasi objek baru setiap format dipanggil.
   static final DateFormat _full = DateFormat('EEEE, d MMM yyyy', 'id_ID');

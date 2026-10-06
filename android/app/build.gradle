@@ -97,4 +97,7 @@ dependencies {}
 // muncul dan plugin ini aktif otomatis di build berikutnya.
 if (file("google-services.json").exists()) {
     apply plugin: "com.google.gms.google-services"
+    // Crashlytics butuh google-services aktif; plugin ini juga mengunggah peta
+    // simbol saat membangun AAB ter-obfuscate (stack trace tetap terbaca).
+    apply plugin: "com.google.firebase.crashlytics"
 }

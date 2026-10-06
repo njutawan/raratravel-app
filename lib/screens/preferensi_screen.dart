@@ -14,9 +14,26 @@ class PreferensiScreen extends StatefulWidget {
 }
 
 class _PreferensiScreenState extends State<PreferensiScreen> {
-  String _mataUang = 'IDR';
-  String _bahasa = 'id';
+  String _mataUang = PreferencesService.defaultMataUang;
+  String _bahasa = PreferencesService.defaultBahasa;
   bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _muatPreferensiTersimpan();
+  }
+
+  /// Pengguna bisa membuka layar ini lagi (mis. dari Profil) — tampilkan
+  /// pilihan yang sedang berlaku, bukan selalu nilai bawaan.
+  Future<void> _muatPreferensiTersimpan() async {
+    final prefs = await PreferencesService.getPreferensi();
+    if (!mounted) return;
+    setState(() {
+      _mataUang = prefs.mataUang;
+      _bahasa = prefs.bahasa;
+    });
+  }
 
   Future<void> _lanjut() async {
     setState(() => _loading = true);
@@ -24,6 +41,9 @@ class _PreferensiScreenState extends State<PreferensiScreen> {
       mataUang: _mataUang,
       bahasa: _bahasa,
     );
+    // Terapkan langsung (harga & locale) tanpa perlu buka aplikasi ulang.
+    PreferencesService.mataUang.value = _mataUang;
+    PreferencesService.bahasa.value = _bahasa;
     await PreferencesService.setOnboardingDone();
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
@@ -107,12 +127,14 @@ class _PreferensiScreenState extends State<PreferensiScreen> {
                 DropdownButtonFormField<String>(
                   initialValue: _mataUang,
                   decoration: _dekorasiDropdown(),
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'IDR',
-                      child: Text('IDR - Rupiah Indonesia (Rp)'),
-                    ),
-                  ],
+                  items: PreferencesService.daftarMataUang
+                      .map(
+                        (kode) => DropdownMenuItem(
+                          value: kode,
+                          child: Text(_labelMataUang(kode)),
+                        ),
+                      )
+                      .toList(),
                   onChanged: (v) => setState(() => _mataUang = v ?? _mataUang),
                 ),
                 const SizedBox(height: 32),
@@ -120,9 +142,14 @@ class _PreferensiScreenState extends State<PreferensiScreen> {
                 DropdownButtonFormField<String>(
                   initialValue: _bahasa,
                   decoration: _dekorasiDropdown(),
-                  items: const [
-                    DropdownMenuItem(value: 'id', child: Text('Indonesia')),
-                  ],
+                  items: PreferencesService.daftarBahasa
+                      .map(
+                        (kode) => DropdownMenuItem(
+                          value: kode,
+                          child: Text(_labelBahasa(kode)),
+                        ),
+                      )
+                      .toList(),
                   onChanged: (v) => setState(() => _bahasa = v ?? _bahasa),
                 ),
               ],
@@ -160,6 +187,19 @@ class _PreferensiScreenState extends State<PreferensiScreen> {
     );
   }
 }
+
+/// Label pilihan mata uang (tambah di sini bila mata uang baru didukung).
+String _labelMataUang(String kode) => switch (kode) {
+  'IDR' => 'IDR - Rupiah Indonesia (Rp)',
+  _ => kode,
+};
+
+/// Label pilihan bahasa.
+String _labelBahasa(String kode) => switch (kode) {
+  'id' => 'Indonesia',
+  'en' => 'English',
+  _ => kode,
+};
 
 /// Lengkungan bawah header (efek seperti aplikasi Traveloka).
 class _CurveClipper extends CustomClipper<Path> {

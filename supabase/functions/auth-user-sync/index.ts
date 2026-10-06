@@ -13,13 +13,18 @@
  *   POST /functions/v1/auth-user-sync
  *   Authorization: Bearer <firebase id token>
  *   {"action":"sync","full_name":"Budi","fcm_token":"...","platform":"android"}
+ *
+ * Aksi `purge` dipakai tombol "Hapus Akun" (hak subjek data): menghapus seluruh
+ * data pribadi pengguna di Supabase — profil, pesanan, pembayaran, antrean
+ * notifikasi, dan berkas bukti transfer. Dipanggil SEBELUM akun Firebase
+ * dihapus, karena setelah itu token tidak bisa diverifikasi lagi.
  */
 import { rpc } from "../_shared/db.ts";
 import { requireFirebaseUser } from "../_shared/firebase.ts";
 import { handleError, json, optionsResponse, readJson } from "../_shared/http.ts";
 
 interface SyncPayload {
-  action?: "sync" | "profile" | "unregister-device";
+  action?: "sync" | "profile" | "unregister-device" | "purge";
   full_name?: string;
   phone?: string;
   fcm_token?: string;
@@ -53,6 +58,22 @@ Deno.serve(async (req: Request) => {
     const firebaseUser = await requireFirebaseUser(req);
     const body = req.method === "POST" ? await readJson<SyncPayload>(req) : {};
     const action = body.action ?? "sync";
+
+    // Hapus permanen data pribadi (tombol "Hapus Akun" di Profil).
+    // UID diambil dari token terverifikasi — body tidak dipercaya, sehingga
+    // satu pengguna tidak bisa menghapus data pengguna lain.
+    if (action === "purge") {
+      const purgeUserId = await rpc<string | null>("resolve_user_id", {
+        p_firebase_uid: firebaseUser.uid,
+      });
+      if (!purgeUserId) {
+        return json({ ok: true, deleted: false, reason: "user_not_found" }, { origin });
+      }
+      const hasil = await rpc<Record<string, unknown>>("purge_user_data", {
+        p_user_id: purgeUserId,
+      });
+      return json({ ok: true, ...hasil }, { origin });
+    }
 
     if (action === "unregister-device") {
       const result = await rpc<{ deactivated: number }>("unregister_user_device", {
