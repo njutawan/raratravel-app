@@ -109,13 +109,13 @@ await uji("users: pemilik boleh tulis & baca profilnya", async () => {
 });
 
 await uji("users: profil orang lain DITOLAK", async () => {
-  await setDoc(doc(budi.firestore(), "users/uid-budi"), { uid: "uid-budi" });
+  // Profil sari dibuat oleh sari sendiri (dokumen users/{uid} hanya boleh
+  // disentuh pemiliknya) — lalu dipastikan budi tidak bisa membacanya.
+  await setDoc(doc(sari.firestore(), "users/sari"), { uid: "sari", name: "Sari" });
+  await diizinkan(getDoc(doc(sari.firestore(), "users/sari")), "baca profil sendiri");
+  await ditolak(getDoc(doc(budi.firestore(), "users/sari")), "baca profil orang lain");
   await ditolak(
-    getDoc(doc(sari.firestore(), "users/uid-budi")),
-    "baca profil orang lain",
-  );
-  await ditolak(
-    setDoc(doc(sari.firestore(), "users/uid-budi"), { uid: "uid-budi", name: "Sari" }),
+    setDoc(doc(budi.firestore(), "users/sari"), { uid: "sari", name: "Budi" }),
     "timpa profil orang lain",
   );
 });
