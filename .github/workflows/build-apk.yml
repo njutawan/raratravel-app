@@ -56,6 +56,11 @@ jobs:
       - name: flutter pub get
         run: flutter pub get
 
+      # Gerbang cepat: galat kode ketahuan sebelum Gradle jalan, dan pesannya
+      # muncul di log CI. Peringatan/informasi tidak menggagalkan build.
+      - name: flutter analyze (galat kode saja)
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
       - name: Baca versi aplikasi (pubspec.yaml)
         id: ver
         run: |
@@ -91,7 +96,19 @@ jobs:
             printf '%s\n' "${DEFINES[@]}" \
               | sed 's|^--dart-define=SUPABASE_ANON_KEY=.*|--dart-define=SUPABASE_ANON_KEY=***|'
           fi
-          flutter build apk --release "${DEFINES[@]}"
+          # Bila build gagal, angkat baris galatnya ke anotasi agar mudah dibaca
+          # dari `gh run view` (log mentah tersimpan di artifact/halaman run).
+          set +e
+          flutter build apk --release "${DEFINES[@]}" 2>&1 | tee /tmp/build.log
+          STATUS=${PIPESTATUS[0]}
+          set -e
+          if [ "$STATUS" -ne 0 ]; then
+            GALAT="$(grep -iE 'error|exception|failed|failure|what went wrong' /tmp/build.log | grep -viE 'warning|deprecat' | tail -6 | tr '\n' '~' | cut -c1-800)"
+            EKOR="$(tail -12 /tmp/build.log | tr '\n' '~' | cut -c1-800)"
+            echo "::error title=Baris galat build::${GALAT:-tidak terdeteksi}"
+            echo "::error title=Ekor log build::${EKOR}"
+          fi
+          exit "$STATUS"
 
       - name: Cetak SHA penanda tangan APK (untuk Firebase)
         run: |
