@@ -1,0 +1,283 @@
+name: Deploy Supabase
+
+# Terapkan migrasi PostgreSQL + deploy Edge Function ke proyek Supabase NYATA
+# (MIGRASI_SUPABASE.md §2.4/§4, RILIS_PRODUKSI.md poin 4) — tanpa perlu
+# memasang Supabase CLI di komputer.
+#
+# Jalankan:
+#   gh workflow run deploy-supabase.yml                       # migrasi + 10 fungsi
+#   gh workflow run deploy-supabase.yml -f dry_run=true       # lihat dulu, tidak mengubah
+#   gh workflow run deploy-supabase.yml -f fungsi=auth-user-sync   # satu fungsi saja
+#   gh workflow run deploy-supabase.yml -f migrasi=false      # fungsi saja
+#   gh run watch
+#
+# Secrets (Settings → Secrets and variables → Actions → Secrets):
+#   SUPABASE_ACCESS_TOKEN   WAJIB — Dashboard → Account → Access Tokens (sbp_…)
+#   SUPABASE_DB_PASSWORD    wajib untuk migrasi — Settings → Database
+#   NOTIFY_WEBHOOK_SECRET   dianjurkan — dipakai langkah setelan notifikasi
+#   FIREBASE_SERVICE_ACCOUNT_JSON  untuk FCM (push notifikasi)
+#   MIDTRANS_SERVER_KEY     bila pembayaran online dipakai
+# Variables (tab Variables):
+#   SUPABASE_PROJECT_REF    wajib bila input project_ref dikosongkan
+#   SUPABASE_ANON_KEY       untuk verifikasi REST setelah deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_ref:
+        description: "Project ref Supabase (kosong = vars.SUPABASE_PROJECT_REF)"
+        type: string
+        default: ""
+      migrasi:
+        description: "Terapkan migrasi (supabase db push)"
+        type: boolean
+        default: true
+      fungsi:
+        description: "Edge Function yang di-deploy"
+        type: choice
+        default: "semua"
+        options:
+          - "semua"
+          - "tanpa-fungsi"
+          - "auth-user-sync"
+          - "register-device"
+          - "search-routes"
+          - "create-booking"
+          - "manage-booking"
+          - "notify-booking-status"
+          - "payment-intent"
+          - "payment-webhook"
+          - "storage-sign"
+          - "admin-import"
+      setelan_notifikasi:
+        description: "Setel pg_net + app.settings.notify_* (butuh NOTIFY_WEBHOOK_SECRET)"
+        type: boolean
+        default: true
+      dry_run:
+        description: "Hanya tampilkan apa yang akan dijalankan"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-supabase
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Migrasi + Edge Function
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Pasang Supabase CLI
+        run: npm install -g supabase@latest
+
+      - name: Tentukan project ref
+        id: proyek
+        env:
+          REF_INPUT: ${{ inputs.project_ref }}
+          REF_VAR: ${{ vars.SUPABASE_PROJECT_REF }}
+        run: |
+          REF="$REF_INPUT"
+          [ -n "$REF" ] || REF="$REF_VAR"
+          if [ -z "$REF" ]; then
+            echo "::error::Project ref tidak diketahui — isi input 'project_ref' atau variable SUPABASE_PROJECT_REF."
+            exit 1
+          fi
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "SUPABASE_URL=https://$REF.supabase.co" >> "$GITHUB_ENV"
+          echo "Project ref: $REF"
+
+      - name: Siapkan .env.supabase untuk tools/setup_supabase.sh
+        id: env
+        env:
+          REF: ${{ steps.proyek.outputs.ref }}
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          DBPASS: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          NOTIFY: ${{ secrets.NOTIFY_WEBHOOK_SECRET }}
+          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          MIDTRANS: ${{ secrets.MIDTRANS_SERVER_KEY }}
+          ANON: ${{ vars.SUPABASE_ANON_KEY }}
+          FB_PROJECT: ${{ vars.FIREBASE_PROJECT_ID }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Secret SUPABASE_ACCESS_TOKEN belum ada."
+            echo "Supabase Dashboard → Account → Access Tokens → buat token (sbp_…),"
+            echo "lalu simpan sebagai repository secret."
+            exit 1
+          fi
+          if [ "${{ inputs.migrasi }}" = "true" ] && [ "${{ inputs.dry_run }}" != "true" ] && [ -z "$DBPASS" ]; then
+            echo "::error::Migrasi butuh secret SUPABASE_DB_PASSWORD (Dashboard → Settings → Database)."
+            echo "Alternatif: jalankan dengan -f migrasi=false untuk deploy fungsi saja."
+            exit 1
+          fi
+          {
+            echo "SUPABASE_PROJECT_REF=$REF"
+            echo "SUPABASE_URL=https://$REF.supabase.co"
+            echo "SUPABASE_DB_PASSWORD=$DBPASS"
+            echo "SUPABASE_ANON_KEY=$ANON"
+            echo "FIREBASE_PROJECT_ID=${FB_PROJECT:-raratravel-apk}"
+            echo "NOTIFY_WEBHOOK_SECRET=$NOTIFY"
+            echo "MIDTRANS_SERVER_KEY=$MIDTRANS"
+            echo "MIDTRANS_IS_PRODUCTION=false"
+            echo "ALLOWED_ORIGINS=*"
+          } > .env.supabase
+          if [ -n "$SA_JSON" ]; then
+            SA="$RUNNER_TEMP/firebase-sa.json"
+            printf '%s' "$SA_JSON" > "$SA"
+            chmod 600 "$SA"
+            echo "FIREBASE_SERVICE_ACCOUNT_FILE=$SA" >> .env.supabase
+            echo "sa=ada" >> "$GITHUB_OUTPUT"
+          else
+            echo "sa=tidak-ada" >> "$GITHUB_OUTPUT"
+          fi
+          # Nilai secret tidak boleh tercetak; cek cepat saja.
+          echo "SUPABASE_URL=https://$REF.supabase.co" >> "$GITHUB_ENV"
+          echo "SUPABASE_ANON_KEY=$ANON" >> "$GITHUB_ENV"
+          echo "env siap (service account: $([ -n "$SA_JSON" ] && echo ada || echo tidak))"
+
+      - name: Mode dry-run (tidak mengubah apa pun)
+        if: ${{ inputs.dry_run }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          REF: ${{ steps.proyek.outputs.ref }}
+        run: |
+          set -o pipefail
+          supabase projects list >/dev/null 2>&1 \
+            && echo "Token diterima platform." || echo "::warning::Token ditolak / proyek tidak terbaca."
+          supabase link --project-ref "$REF" >/dev/null 2>&1 \
+            || echo "::warning::link gagal — daftar di bawah bisa tidak lengkap."
+          echo "### Dry-run — apa yang akan dijalankan" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          supabase migration list --linked 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          supabase db push --dry-run --linked 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          supabase functions list 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Sambungkan CLI ke proyek (link)
+        if: ${{ !inputs.dry_run }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -o pipefail
+          bash tools/setup_supabase.sh --step 3 2>&1 | tail -n 10
+
+      - name: Terapkan migrasi (db push)
+        if: ${{ !inputs.dry_run && inputs.migrasi }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -o pipefail
+          bash tools/setup_supabase.sh --step 4 2>&1 | tee migrasi.log
+          {
+            echo "### Migrasi database"
+            echo ""
+            echo '```'
+            tail -n 30 migrasi.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Deploy Edge Function
+        if: ${{ !inputs.dry_run && inputs.fungsi != 'tanpa-fungsi' }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          FUNGSI: ${{ inputs.fungsi }}
+        run: |
+          set -o pipefail
+          deploy_satu() {
+            nama="$1"
+            if supabase functions deploy "$nama" >>fungsi.log 2>&1; then
+              echo "  ✔ $nama" | tee -a "$GITHUB_STEP_SUMMARY"
+            elif supabase functions deploy "$nama" --use-api >>fungsi.log 2>&1; then
+              echo "  ✔ $nama (lewat --use-api)" | tee -a "$GITHUB_STEP_SUMMARY"
+            else
+              echo "  ✖ $nama — lihat log" | tee -a "$GITHUB_STEP_SUMMARY"
+              tail -n 20 fungsi.log
+              return 1
+            fi
+          }
+          echo "### Edge Function" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$FUNGSI" = "semua" ]; then
+            gagal=0
+            for f in auth-user-sync register-device search-routes create-booking \
+                     manage-booking notify-booking-status payment-intent \
+                     payment-webhook storage-sign admin-import; do
+              deploy_satu "$f" || gagal=1
+            done
+            [ "$gagal" = 0 ] || { echo "::error::Ada Edge Function yang gagal di-deploy."; exit 1; }
+          else
+            deploy_satu "$FUNGSI"
+          fi
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          tail -n 15 fungsi.log 2>/dev/null >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Setelan notifikasi (pg_net + app.settings)
+        if: ${{ !inputs.dry_run && inputs.setelan_notifikasi }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -o pipefail
+          bash tools/setup_supabase.sh --step 7 2>&1 | tee notifikasi.log || true
+          {
+            echo ""
+            echo "### Setelan notifikasi"
+            echo ""
+            echo '```'
+            tail -n 20 notifikasi.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verifikasi hasil deploy
+        if: ${{ !inputs.dry_run }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -o pipefail
+          bash tools/setup_supabase.sh --step 8 2>&1 | tee verifikasi.log || true
+          {
+            echo ""
+            echo "### Verifikasi"
+            echo ""
+            echo '```'
+            tail -n 30 verifikasi.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if grep -q "✖" verifikasi.log; then
+            echo "::error::Ada pemeriksaan yang gagal — lihat ringkasan 'Verifikasi'."
+            exit 1
+          fi
+
+      - name: Catatan lanjutan
+        if: ${{ always() }}
+        run: |
+          {
+            echo ""
+            echo "### Setelah deploy"
+            echo "- Secrets Edge Function (\`FIREBASE_PROJECT_ID\`, \`FIREBASE_SERVICE_ACCOUNT\`, Midtrans):"
+            echo "  \`bash tools/setup_supabase.sh --step 5\` di komputer, atau Dashboard →"
+            echo "  Edge Functions → Manage secrets. Deploy ulang tidak mengubah secrets."
+            echo "- Bila migrasi 0008 memberi PERINGATAN (skema storage), buat 3 bucket manual:"
+            echo "  \`public-assets\` (public, 5 MB), \`avatars\` (public, 2 MB), \`payment-proofs\` (privat, 5 MB)."
+            echo "- Uji nyata dengan token Firebase: MIGRASI_SUPABASE.md §7."
+            echo "- Sakelar aplikasi: CATALOG_SOURCE / BOOKING_WRITE / PAYMENTS_ENABLED"
+            echo "  → \`bash tools/set_actions_variables.sh --build\`."
+          } >> "$GITHUB_STEP_SUMMARY"

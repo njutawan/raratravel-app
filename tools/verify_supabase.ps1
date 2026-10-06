@@ -117,7 +117,7 @@ if ($r.Kode -eq "200") {
   Catat "REST API" $true "menjawab 200 (tabel cities ada)"
 } elseif ($r.Kode -eq "404" -or $r.Isi -match "PGRST205") {
   Catat "REST API" $true "menjawab (kunci sah) tetapi tabel belum ada"
-  Catat "Migrasi database" $false "tabel public.cities belum ada" "jalankan 11 berkas supabase\migrations\*.sql di SQL Editor (urut nama)"
+  Catat "Migrasi database" $false "tabel public.cities belum ada" "jalankan 12 berkas supabase\migrations\*.sql di SQL Editor (urut nama)"
 } elseif ($r.Isi -match "No API key|Invalid API key") {
   Catat "REST API" $false "kunci publik ditolak" "salin ulang anon/publishable key dari Settings → API Keys"
 } else {
@@ -161,6 +161,21 @@ if ($cari.Kode -eq "200" -and $cari.Isi -match '"total"') {
   Catat "RPC search_routes" $true "menjawab (katalog mungkin kosong)"
 } else {
   Catat "RPC search_routes" $false "HTTP $($cari.Kode)" $cari.Isi
+}
+
+# purge_user_data (migrasi 0010) — inti temuan H-3: tanpa fungsi ini tombol
+# "Hapus Akun" hanya menghapus akun Firebase, data server tetap ada.
+# Diperiksa lewat skema OpenAPI PostgREST (read-only) — TIDAK dipanggil, karena
+# memanggilnya dengan argumen nyata akan menghapus data.
+if (-not $ServiceKey) {
+  Write-Host "  [LEWAT] RPC purge_user_data butuh kunci server — jalankan ulang dengan -ServiceKey" -ForegroundColor DarkGray
+} else {
+  $spec = Panggil "GET" "/rest/v1/" "service"
+  if ($spec.Isi -match "purge_user_data") {
+    Catat "RPC purge_user_data" $true "ada (migrasi 0010 terpasang)"
+  } else {
+    Catat "RPC purge_user_data" $false "tidak ada" "tempel 202609140010_purge_user.sql di SQL Editor — tanpa ini Hapus Akun tidak menghapus data server (temuan H-3)"
+  }
 }
 
 # ---------------------------------------------------------------------------
@@ -225,7 +240,7 @@ if ($gagal.Count -eq 0) {
   }
   if ($terpasang -eq 0 -and ($gagal | Where-Object { $_.Nama -eq "Migrasi database" })) {
     Write-Host ""
-    Write-Host "Urutan lanjutan: (1) migrasi 11 berkas SQL → (2) bucket Storage → (3) deploy 10 fungsi." -ForegroundColor Cyan
+    Write-Host "Urutan lanjutan: (1) migrasi 12 berkas SQL → (2) bucket Storage → (3) deploy 10 fungsi." -ForegroundColor Cyan
   }
 }
 Remove-Item -Path "$env:TEMP\sb_jawab.json" -ErrorAction SilentlyContinue

@@ -234,7 +234,7 @@ langkah_4() {
 
   ( cd "$AKAR" && SUPABASE_DB_PASSWORD="$SUPABASE_DB_PASSWORD" jalankan_sb db push --linked )
   if [ $? -eq 0 ]; then
-    ok "11 migrasi diterapkan"
+    ok "12 migrasi diterapkan"
     local sisa
     sisa="$(migrasi_tertunda)"
     [ "${sisa:-0}" -eq 0 ] && ok "tidak ada migrasi tertunda"

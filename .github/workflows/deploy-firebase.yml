@@ -1,0 +1,247 @@
+name: Deploy Firebase
+
+# Publish firestore.rules + indexes ke proyek Firebase NYATA — jalur untuk
+# menutup temuan keamanan H-1 tanpa buka Console (RILIS_PRODUKSI.md poin 1).
+#
+# Jalankan:
+#   gh workflow run deploy-firebase.yml                          # rules + indexes
+#   gh workflow run deploy-firebase.yml -f target=rules          # rules saja
+#   gh workflow run deploy-firebase.yml -f target=all -f konfirmasi=true
+#   gh run watch                                                 # pantau
+#
+# Urutan di dalam workflow: UJI aturan di emulator dulu (gate), baru deploy,
+# lalu verifikasi ke proyek nyata (tools/verify_published_rules.sh).
+#
+# Secrets (Settings → Secrets and variables → Actions → Secrets):
+#   FIREBASE_SERVICE_ACCOUNT_JSON  salah satu dari dua ini WAJIB.
+#   FIREBASE_TOKEN                 Isi SA = seluruh berkas JSON service account
+#                                  (Firebase Console → Project settings →
+#                                  Service accounts → Generate new private key).
+# Variables (tab Variables):
+#   FIREBASE_PROJECT_ID            opsional — bawaan dibaca dari .firebaserc
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Yang di-deploy"
+        type: choice
+        default: "rules+indexes"
+        options:
+          - "rules+indexes"
+          - "rules"
+          - "indexes"
+          - "functions"
+          - "all"
+      project:
+        description: "Project id (kosong = .firebaserc / vars)"
+        type: string
+        default: ""
+      skip_tests:
+        description: "Lewati gate uji emulator (TIDAK disarankan)"
+        type: boolean
+        default: false
+      konfirmasi:
+        description: "Wajib dicentang bila target memuat Cloud Functions (butuh Blaze)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-firebase
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Gate — uji aturan di emulator
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: >-
+      ${{ (inputs.target == 'rules' || inputs.target == 'rules+indexes' ||
+           inputs.target == 'all') && !inputs.skip_tests }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Pasang firebase-tools + SDK uji aturan
+        run: npm install --no-save firebase-tools@15 firebase@12 @firebase/rules-unit-testing@5
+
+      # Gate: kalau 13 uji keamanan ini merah, rules TIDAK boleh dipublish.
+      - name: Uji firestore.rules (13 pengujian keamanan)
+        id: rules
+        run: |
+          set -o pipefail
+          npx firebase emulators:exec --only firestore --project demo-raratravel \
+            "node tools/firestore/rules_test.mjs" 2>&1 | tee rules-emulator.log
+
+      - name: Ringkasan gate
+        if: always()
+        run: |
+          {
+            echo "### Gate: aturan Firestore (emulator)"
+            echo ""
+            echo "Status: **${{ steps.rules.outcome }}**"
+            echo ""
+            echo '```'
+            if [ -f rules-result.txt ]; then cat rules-result.txt
+            else tail -n 30 rules-emulator.log 2>/dev/null || echo "(log belum ada)"; fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: Deploy ke Firebase
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: gate
+    if: >-
+      ${{ always() && !cancelled() &&
+          (needs.gate.result == 'success' || needs.gate.result == 'skipped') }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Tentukan project id
+        id: proyek
+        run: |
+          PID="${{ inputs.project }}"
+          [ -n "$PID" ] || PID="${{ vars.FIREBASE_PROJECT_ID }}"
+          if [ -z "$PID" ] && [ -f .firebaserc ]; then
+            PID="$(python3 -c 'import json;print((json.load(open(".firebaserc")).get("projects") or {}).get("default",""))')"
+          fi
+          if [ -z "$PID" ] || [ "$PID" = "PROJECT_ID_KAMU" ]; then
+            echo "::error::Project id tidak diketahui — isi input 'project' atau variable FIREBASE_PROJECT_ID."
+            exit 1
+          fi
+          echo "pid=$PID" >> "$GITHUB_OUTPUT"
+          echo "Project: $PID"
+
+      - name: Siapkan kredensial
+        id: kredensial
+        env:
+          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          FB_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          if [ -n "$SA_JSON" ]; then
+            SA="$RUNNER_TEMP/firebase-sa.json"
+            printf '%s' "$SA_JSON" > "$SA"
+            chmod 600 "$SA"
+            echo "GOOGLE_APPLICATION_CREDENTIALS=$SA" >> "$GITHUB_ENV"
+            echo "mode=service-account" >> "$GITHUB_OUTPUT"
+            echo "Kredensial: service account (GOOGLE_APPLICATION_CREDENTIALS)"
+          elif [ -n "$FB_TOKEN" ]; then
+            echo "FIREBASE_TOKEN=$FB_TOKEN" >> "$GITHUB_ENV"
+            echo "mode=cli-token" >> "$GITHUB_OUTPUT"
+            echo "Kredensial: FIREBASE_TOKEN (firebase login:ci)"
+          else
+            echo "::error::Butuh secret FIREBASE_SERVICE_ACCOUNT_JSON atau FIREBASE_TOKEN."
+            echo "Settings → Secrets and variables → Actions → New repository secret."
+            exit 1
+          fi
+
+      - name: Pasang firebase-tools
+        run: npm install -g firebase-tools@15
+
+      - name: Petakan target deploy
+        id: peta
+        env:
+          TARGET: ${{ inputs.target }}
+          KONFIRMASI: ${{ inputs.konfirmasi }}
+        run: |
+          case "$TARGET" in
+            rules)         ONLY="firestore:rules" ;;
+            indexes)       ONLY="firestore:indexes" ;;
+            rules+indexes) ONLY="firestore:rules,firestore:indexes" ;;
+            functions)     ONLY="functions" ;;
+            all)           ONLY="firestore:rules,firestore:indexes,functions" ;;
+            *) echo "::error::target tidak dikenal: $TARGET"; exit 1 ;;
+          esac
+          case "$ONLY" in
+            *functions*)
+              if [ "$KONFIRMASI" != "true" ]; then
+                echo "::error::Deploy Cloud Functions butuh paket Blaze + budget alert."
+                echo "Ulangi dengan -f konfirmasi=true bila memang disengaja."
+                exit 1
+              fi
+              ( cd functions_sample && npm install )
+              ;;
+          esac
+          echo "only=$ONLY" >> "$GITHUB_OUTPUT"
+          echo "Deploy: firebase deploy --only $ONLY"
+
+      - name: Deploy
+        env:
+          PID: ${{ steps.proyek.outputs.pid }}
+          ONLY: ${{ steps.peta.outputs.only }}
+        run: |
+          set -o pipefail
+          firebase deploy --only "$ONLY" --project "$PID" --non-interactive 2>&1 \
+            | tee deploy.log
+          {
+            echo "### Deploy Firebase → \`$PID\`"
+            echo ""
+            echo "- target: \`$ONLY\`"
+            echo "- kredensial: ${{ steps.kredensial.outputs.mode }}"
+            echo "- commit: \`${GITHUB_SHA}\`"
+            echo ""
+            echo '```'
+            tail -n 25 deploy.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Bukti bahwa rules di server == rules di repo, dan bahwa akses tanpa
+      # login benar-benar ditolak (inti temuan H-1).
+      - name: Verifikasi rules yang ter-publish
+        id: verifikasi
+        if: ${{ contains(steps.peta.outputs.only, 'firestore:rules') }}
+        env:
+          PID: ${{ steps.proyek.outputs.pid }}
+        run: |
+          set -o pipefail
+          bash tools/verify_published_rules.sh --project "$PID" 2>&1 | tee verify.log
+        continue-on-error: true
+
+      - name: Laporkan hasil verifikasi
+        if: ${{ always() && contains(steps.peta.outputs.only, 'firestore:rules') }}
+        run: |
+          {
+            echo ""
+            echo "### Verifikasi rules di proyek nyata"
+            echo ""
+            echo '```'
+            tail -n 40 verify.log 2>/dev/null || echo "(verifikasi tidak jalan)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          case "${{ steps.verifikasi.outcome }}" in
+            success) echo "Verifikasi lolos: rules di server == repo, akses tanpa login ditolak." ;;
+            failure)
+              echo "::error title=Rules belum berlaku::Verifikasi gagal — rules di server belum sama dengan repo, atau masih bisa diakses tanpa login."
+              exit 1 ;;
+            *)
+              echo "::error title=Verifikasi tidak jalan::Deploy gagal atau langkah verifikasi dilewati — periksa log di atas."
+              exit 1 ;;
+          esac
+
+      - name: Catatan lanjutan
+        if: always()
+        run: |
+          {
+            echo ""
+            echo "### Setelah deploy"
+            echo "- Uji di HP: login OTP → buat pesanan → pesanan hanya muncul di akun itu."
+            echo "- Rules Playground (Console → Firestore → Rules) untuk kasus ber-token."
+            echo "- App Check enforcement: \`bash tools/appcheck_admin.sh --status\`"
+            echo "- Kebijakan SMS: \`bash tools/sms_region_policy.sh --status\`"
+          } >> "$GITHUB_STEP_SUMMARY"
