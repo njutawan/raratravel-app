@@ -7,6 +7,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import '../config/backend_config.dart';
 import '../models/app_user.dart';
 import '../models/booking.dart';
+import '../models/booking_status.dart';
 import '../repositories/booking_repository.dart';
 import '../utils/formatters.dart';
 import 'booking_storage.dart';
@@ -210,9 +211,17 @@ class AuthService {
     // Supabase: satu panggilan untuk profil + perangkat (langkah 4 & 8).
     await _sinkronSupabase();
 
+    // Pesanan yang belum ada di server baru + outbox offline. Dijalankan di
+    // SEMUA mode (termasuk 'dual'): tanpanya, pesanan yang gagal terkirim saat
+    // booking (mis. jaringan putus) hanya tersimpan di Firestore/HP dan tidak
+    // pernah masuk ke database baru.
+    final sinkronPesananBaru = BackendConfig.useSupabaseBooking
+        ? _sinkronPesananSupabase()
+        : Future<void>.value();
+
     if (!BackendConfig.writeFirestore && !BackendConfig.firestoreIsSourceOfTruth) {
       // Firestore sudah tidak dipakai; cukup sinkronkan ke server baru.
-      await _sinkronPesananSupabase();
+      await sinkronPesananBaru;
       return;
     }
 
@@ -231,6 +240,7 @@ class AuthService {
       await Future.wait([
         _sinkronPesanan(user.uid),
         MessagingService.registerToken(user.uid),
+        sinkronPesananBaru,
       ]);
     } catch (_) {}
   }
@@ -245,33 +255,77 @@ class AuthService {
     } catch (_) {}
   }
 
-  /// Kirim pesanan lokal yang belum ada di server baru.
+  /// Sinkronkan pesanan ke server baru (Supabase).
   ///
-  /// Pesanan yang sudah pernah tersinkron ditandai di riwayat HP
-  /// (`rara_migrated_v1`), jadi proses ini hanya mengirim yang baru/tertinggal.
+  /// Dua sumber pekerjaan:
+  ///   1. pesanan lokal yang belum pernah terkirim (`rara_migrated_sb_v1`),
+  ///   2. outbox offline (`rara_dirty_sb_v1`) — mis. saat booking jaringan mati.
+  ///
+  /// Idempotent: kunci idempotency asli ikut disimpan, jadi pengiriman ulang
+  /// tidak menghasilkan pesanan ganda. Aman gagal (try/catch di dalam).
   static Future<void> _sinkronPesananSupabase() async {
     try {
-      final sudah = await BookingStorage.migratedCodes();
+      final sudah = await BookingStorage.migratedSbCodes();
+      final outbox = (await BookingStorage.dirtySbCodes()).toSet();
       final lokal = await BookingStorage.loadAll();
       final hariIni = _hariIni();
+
       for (final booking in lokal) {
-        if (sudah.contains(booking.kode)) continue;
-        // Tanggal lampau ditolak server (memang dirancang begitu) — cukup
-        // tinggal di riwayat HP. Tandai "sudah" agar tidak dicoba ulang
-        // tanpa henti tiap login.
-        final tanggal = Formatters.tryParseDate(booking.tanggal);
-        if (tanggal != null && tanggal.isBefore(hariIni)) {
-          await BookingStorage.markMigrated(booking.kode);
+        if (!outbox.contains(booking.kode) && sudah.contains(booking.kode)) {
+          continue; // sudah aman di server
+        }
+
+        // Dibuat di HP lalu dibatalkan sebelum sempat terkirim: server belum
+        // pernah punya pesanan ini, jadi tidak ada yang perlu dikirim.
+        if (booking.statusKode == BookingStatus.cancelled && booking.id.isEmpty) {
+          await BookingStorage.markMigratedSb(booking.kode);
+          await BookingStorage.unmarkDirtySb(booking.kode);
           continue;
         }
+
+        // Sudah ada di server (punya UUID) tetapi dibatalkan di HP →
+        // teruskan pembatalannya, jangan buat ulang pesanannya.
+        if (booking.statusKode == BookingStatus.cancelled) {
+          try {
+            await BookingRepository.cancel(
+              booking.kode,
+              reason: 'Dibatalkan pengguna',
+            );
+            await BookingStorage.unmarkDirtySb(booking.kode);
+          } catch (_) {
+            await BookingStorage.markDirtySb(booking.kode);
+          }
+          continue;
+        }
+
+        // Tanggal lampau ditolak server (memang dirancang begitu) — cukup
+        // tinggal di riwayat HP. Ditandai agar tidak dicoba ulang tanpa henti.
+        final tanggal = Formatters.tryParseDate(booking.tanggal);
+        if (tanggal != null && tanggal.isBefore(hariIni)) {
+          await BookingStorage.markMigratedSb(booking.kode);
+          await BookingStorage.unmarkDirtySb(booking.kode);
+          continue;
+        }
+
         try {
           await BookingRepository.create(
             draft: booking,
-            idempotencyKey: 'migrasi-${booking.kode}',
+            idempotencyKey:
+                await BookingStorage.idempotencyKeyFor(booking.kode) ??
+                'migrasi-${booking.kode}',
           );
+          await BookingStorage.markMigratedSb(booking.kode);
+          await BookingStorage.unmarkDirtySb(booking.kode);
         } catch (_) {
-          await BookingStorage.markDirty(booking.kode);
+          await BookingStorage.markDirtySb(booking.kode);
         }
+      }
+
+      // Outbox yang pesanannya sudah dihapus dari HP: tidak ada yang bisa
+      // dikirim (menghapus riwayat di HP sengaja tidak menyentuh server).
+      for (final kode in outbox) {
+        if (lokal.any((b) => b.kode == kode)) continue;
+        await BookingStorage.unmarkDirtySb(kode);
       }
     } catch (_) {}
   }

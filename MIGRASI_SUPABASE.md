@@ -591,6 +591,10 @@ Jangan ubah `BOOKING_WRITE=supabase` sebelum semua poin ini terpenuhi:
       (harga & jadwal cocok dengan yang dijanjikan admin).
 - [ ] `BOOKING_WRITE=dual` berjalan: jumlah pesanan harian di Firestore **dan**
       di PostgreSQL sama (`admin_stats` vs Console Firestore).
+      Bila ada selisih: pesanan yang gagal terkirim saat booking otomatis
+      dikirim menyusul saat pengguna login berikutnya (outbox `rara_dirty_sb_v1`
+      di `lib/services/booking_storage.dart`) — minta pengguna membuka aplikasi
+      sekali dengan internet, lalu periksa lagi.
 - [ ] Impor data lama selesai dan jumlahnya cocok (`total`, `inserted`, `skipped`).
 - [ ] Notifikasi FCM jalan dari `user_devices` (uji: ubah status pesanan → push masuk).
 - [ ] `payment-webhook` menerima notifikasi uji provider dan menandai `paid`.
