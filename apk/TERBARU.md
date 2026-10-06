@@ -3,17 +3,17 @@
 Berkas APK **tidak lagi disimpan di git** (tiap versi ±60 MB dan akan
 menggelembungkan riwayat repo). Unduh dari halaman **Releases**:
 
-- Versi: **v1.0.0** (build 35)
-- Rilis: https://github.com/njutawan/raratravel-app/releases/tag/build-35-v1.0.0
+- Versi: **v1.0.0** (build 36)
+- Rilis: https://github.com/njutawan/raratravel-app/releases/tag/build-36-v1.0.0
 - Nama berkas: `RaraTravel-v1.0.0-release.apk`
-- SHA-256: `84d573957e6af5b2c72c1368e3966ec02ed601ac46b8e163044c92868a89b35b`
+- SHA-256: `3825395ef0295997087a474dbaf38e476e57baa67bd6fdba1a498e0ca6d0789a`
 - Ukuran: 59M
-- Commit: `be458d16c471cf8d07981fa432b4de30ba23821b`
+- Commit: `5a963cba524a59546e4c847226ea3c0e229858b7`
 
 Cara cepat mengunduh (butuh GitHub CLI):
 
 ```bash
-gh release download build-35-v1.0.0 --pattern "*release.apk"
+gh release download build-36-v1.0.0 --pattern "*release.apk"
 ```
 
 Alternatif: tab **Actions → run terakhir → Artifacts** (30 hari).
