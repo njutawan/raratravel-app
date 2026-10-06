@@ -232,6 +232,10 @@ masih ditulis sebagai cadangan rollback.
 
 ## Catatan: kuota Actions
 
+Setiap build menerbitkan **GitHub Release** berisi APK (dan AAB bila diminta) —
+unduh lewat `gh release download <tag>` atau halaman *Releases*; berkas APK tidak
+lagi disimpan di git agar riwayat repo tidak menggelembung (±60 MB/versi).
+
 Setiap push ke branch menjalankan **Build APK** (menit Flutter) dan
 **Backend check** (PostgreSQL + emulator Firestore). Agar hemat kuota:
 

@@ -298,37 +298,62 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      # Simpan APK ke branch (folder apk/) — HANYA versi terbaru yang disimpan,
-      # supaya riwayat git tidak menggelembung (tiap APK ±60 MB permanen).
-      # Berkas lama dihapus dari pohon kerja; salinan permanen ada di Release.
-      - name: Simpan APK terbaru ke branch (folder apk/)
+      # Catat APK terbaru ke branch TANPA menyimpan berkas biner di git.
+      # Alasan: tiap APK ±60 MB dan blob git tidak pernah menyusut — menyimpan
+      # APK per versi membuat riwayat repo menggelembung tanpa batas. Unduhan
+      # permanen lewat halaman *Releases* (langkah berikutnya); berkasnya juga
+      # tetap ada sebagai artifact workflow.
+      - name: Catat tautan APK terbaru ke branch (folder apk/)
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           mkdir -p apk
-          HAPUS=$(git ls-files apk)
-          if [ -n "$HAPUS" ]; then
-            echo "Menghapus APK lama dari pohon kerja (salinan ada di Release):"
-            printf '%s\n' "$HAPUS"
-            git rm -q --ignore-unmatch $HAPUS
+          # Bersihkan APK/AAB lama dari indeks git (sekali saja) + dari disk.
+          TERLACAK="$(git ls-files 'apk/*.apk' 'apk/*.aab' || true)"
+          if [ -n "$TERLACAK" ]; then
+            echo "Menghapus berkas biner lama dari git:"
+            printf '%s\n' "$TERLACAK"
+            printf '%s\n' "$TERLACAK" | while IFS= read -r berkas; do
+              [ -n "$berkas" ] || continue
+              git rm -q -f --ignore-unmatch -- "$berkas" \
+                || echo "::warning::gagal menghapus $berkas dari indeks git"
+            done
           fi
-          cp build/app/outputs/flutter-apk/app-release.apk \
-            "apk/RaraTravel-v${{ steps.ver.outputs.version }}-release.apk"
-          # -f: .gitignore sengaja mengecualikan apk/ — APK hasil CI memang
-          # ingin di-commit agar mudah diambil lewat `git pull`.
-          git add -f "apk/RaraTravel-v${{ steps.ver.outputs.version }}-release.apk"
-          AAB="build/app/outputs/bundle/release/app-release.aab"
-          if [ -f "$AAB" ]; then
-            cp "$AAB" "apk/RaraTravel-v${{ steps.ver.outputs.version }}-release.aab"
-            git add -f "apk/RaraTravel-v${{ steps.ver.outputs.version }}-release.aab"
-          fi
+          rm -f apk/*.apk apk/*.aab 2>/dev/null || true
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          SHA=$(sha256sum "$APK" | cut -d' ' -f1)
+          UKURAN=$(du -h "$APK" | cut -f1)
+          VERSI="${{ steps.ver.outputs.version }}"
+          TAG="build-${{ github.run_number }}-v$VERSI"
+          cat > apk/TERBARU.md <<EOF
+          # APK terbaru — Rara Travel
+
+          Berkas APK **tidak lagi disimpan di git** (tiap versi ±60 MB dan akan
+          menggelembungkan riwayat repo). Unduh dari halaman **Releases**:
+
+          - Versi: **v$VERSI** (build ${{ github.run_number }})
+          - Rilis: https://github.com/${{ github.repository }}/releases/tag/$TAG
+          - Nama berkas: \`RaraTravel-v$VERSI-release.apk\`
+          - SHA-256: \`$SHA\`
+          - Ukuran: $UKURAN
+          - Commit: \`${{ github.sha }}\`
+
+          Cara cepat mengunduh (butuh GitHub CLI):
+
+          \`\`\`bash
+          gh release download $TAG --pattern "*release.apk"
+          \`\`\`
+
+          Alternatif: tab **Actions → run terakhir → Artifacts** (30 hari).
+          EOF
+          git add -f apk/TERBARU.md
           # `flutter pub get` bisa memperbarui pubspec.lock (dependensi baru),
           # ikutkan agar berkas kunci tidak tertinggal basi di repo.
           if ! git diff --quiet -- pubspec.lock; then git add pubspec.lock; fi
           if git diff --cached --quiet; then
-            echo "APK tidak berubah — tidak ada yang di-commit."
+            echo "Tidak ada perubahan untuk di-commit."
           else
-            git commit -m "CI: APK release v${{ steps.ver.outputs.version }} (build ${{ github.run_number }})"
+            git commit -m "CI: APK release v$VERSI (build ${{ github.run_number }})"
             if ! git push origin "HEAD:${{ github.ref_name }}" 2>push_err.txt; then
               echo "::error::git push gagal: $(tail -c 500 push_err.txt | tr '\n' ' ')"
               exit 1
@@ -371,10 +396,9 @@ jobs:
           {
             echo "### APK siap 📦"
             echo ""
-            echo '- **Artifact workflow**: lihat bagian *Artifacts* di halaman run ini.'
-            echo "- **Commit ke branch**: \`apk/RaraTravel-v${{ steps.ver.outputs.version }}-release.apk\` (hanya versi terbaru)"
-            echo "- **Salinan permanen**: halaman *Releases* repositori ini (per build)"
+              echo "- **Unduhan permanen**: halaman *Releases* (per build) — lihat \`apk/TERBARU.md\` di branch ini"
+            echo "- **Artifact workflow**: bagian *Artifacts* di halaman run ini (30 hari)"
             echo ""
-            echo 'Install: kirim APK ke HP → tap → izinkan *Install unknown apps* → Install.'
+            echo 'Install: unduh APK dari *Releases* (atau artifact) → kirim ke HP → tap → izinkan *Install unknown apps* → Install.'
           } >> "$GITHUB_STEP_SUMMARY"
           ls -lh build/app/outputs/flutter-apk/

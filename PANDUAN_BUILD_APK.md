@@ -20,6 +20,22 @@ upload ke Google Play Store. Semua perintah dijalankan dari folder
 
 ---
 
+## ⬇️ Mengambil APK hasil CI (sejak build 30)
+
+APK **tidak lagi disimpan di git** (tiap versi ±60 MB dan akan menggelembungkan
+riwayat repo). Setiap build otomatis diterbitkan sebagai **GitHub Release**:
+
+```bash
+gh release list --limit 5                          # daftar build terbaru
+gh release download build-30-v1.0.0 --pattern "*release.apk"
+```
+
+- Lewat browser: tab **Releases** di halaman repo → pilih build → unduh `.apk`.
+- Tautan + SHA-256 versi terbaru selalu ada di `apk/TERBARU.md` pada branch.
+- Cadangan: tab **Actions → run terakhir → Artifacts** (disimpan 30 hari).
+
+---
+
 ## ⚡⚡ Cara tercepat: build di GitHub Actions (tanpa install apa pun)
 
 Repo ini punya workflow `.github/workflows/build-apk.yml`. Setiap push ke

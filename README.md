@@ -139,6 +139,7 @@ Berkas terkait:
 | `tools/firestore/rules_test.mjs` | 13 uji keamanan `firestore.rules` di Firestore Emulator (H-1: titip pesanan ke akun lain, alih kepemilikan, dll.) |
 | `tools/check_firestore_rules.sh` | jalankan uji rules di komputer sendiri (butuh Java; CI sudah menjalankannya otomatis) |
 | `tools/set_keystore_secrets.sh` | simpan keystore rilis ke GitHub Secrets agar CI bisa membangun AAB bertanda tangan untuk Play (padanan Windows: `.ps1`) |
+| `apk/TERBARU.md` | penunjuk APK terbaru: tautan *Releases*, ukuran, dan SHA-256. Berkas APK **tidak** disimpan di git (dulu ±60 MB per versi) |
 
 Uji backend tanpa Docker/Supabase CLI (butuh Python 3 + `pgserver`):
 
