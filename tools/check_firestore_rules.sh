@@ -47,6 +47,7 @@ if npx firebase emulators:exec --only firestore --project demo-raratravel \
   echo ""
   ok "firestore.rules sesuai harapan — aman dipublikasikan ke Firebase Console."
   echo "   Langkah publish: lihat RILIS_PRODUKSI.md poin 1."
+  [ -f rules-result.txt ] && echo "   Ringkasan: rules-result.txt"
 else
   echo ""
   fail "Ada pengujian yang gagal — JANGAN publish rules ini."
