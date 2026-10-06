@@ -128,19 +128,40 @@ L-2 function sampel kini guard `userId` kosong + pruning token FCM invalid.
 ## 5. Tugas Anda (tidak bisa saya kerjakan dari sini)
 
 ### 5.1 Publish ulang Firestore Rules (5 menit) — WAJIB
-Firebase Console → Firestore Database → **Rules** → paste seluruh isi file
+Tiga jalur, pilih salah satu:
+
+```bash
+gh workflow run deploy-firebase.yml      # CI: gate 13 uji emulator → publish → verifikasi
+bash tools/setup_firebase.sh --step 6    # lokal (butuh firebase-tools + login)
+bash tools/verify_published_rules.sh     # BUKTI rules sudah berlaku di server
+```
+
+Jalur Console: Firestore Database → **Rules** → paste seluruh isi
 `firestore.rules` → **Publish**. Uji di tab **Rules Playground**: simulasi
 `create /bookings/X` dengan `userId` ≠ uid → harus **Deny**.
+
+`tools/verify_published_rules.sh` menutup pertanyaan "sudah benar-benar
+terpasang atau belum": membandingkan isi rules di server dengan repo, lalu
+mencoba empat permintaan **tanpa login** yang semuanya harus ditolak.
 
 ### 5.2 Nyalakan App Check Enforcement (15 menit) — SANGAT DISARANKAN
 1. Daftarkan SHA-256 juga (selain SHA-1): Play Console → atau
    `keytool -list -v -keystore ...` → Project Settings → tambah sidik jari.
-2. Console → **App Check** → daftarkan aplikasi Android → provider **Play Integrity**.
+2. Daftarkan aplikasi Android → provider **Play Integrity**
+   (Console → **App Check** → Apps; cek: `bash tools/appcheck_admin.sh --status`).
 3. Ambil **token debug** untuk HP development: jalankan aplikasi debug, salin
-   token dari logcat → App Check → tambah debug token.
-   Bantuan: `bash tools/appcheck_debug_token.sh` (atau `--watch` untuk
-   memantau logcat langsung).
-4. **Enforcement**: aktifkan untuk **Firestore** dan **Authentication**.
+   token dari logcat → daftarkan. Satu perintah:
+   ```bash
+   bash tools/appcheck_debug_token.sh --watch     # lihat token di logcat
+   bash tools/appcheck_admin.sh --from-logcat     # ambil + daftarkan sekaligus
+   ```
+4. **Enforcement**: aktifkan untuk **Firestore** dan **Authentication**:
+   `bash tools/appcheck_admin.sh --enforce all`
+   (rollback: `--unenforce all --yes`).
+5. **SMS region policy** (pembatas biaya OTP yang nyata):
+   `bash tools/sms_region_policy.sh --allow ID` — hanya Indonesia yang boleh
+   menerima OTP; `--status` mencetak batas kuota tetap + `--metrik` nama metrik
+   pemantauannya.
 5. Jalankan `flutter pub get` (dependensi baru `firebase_app_check`), uji login
    + buat pesanan di HP fisik.
 
@@ -148,10 +169,17 @@ Firebase Console → Firestore Database → **Rules** → paste seluruh isi file
 > (langkah 4) — kalau terbalik, build debug kamu sendiri ikut terblokir.
 
 ### 5.3 Formulir Data Safety Play Console (saat rilis)
-Isi sesuai fakta: data yang dikumpulkan (nama, no. HP, alamat, email opsional),
-tujuan (fungsionalitas aplikasi), dibagikan ke (Firebase/Google, WhatsApp saat
-user menekan konfirmasi), **penghapusan akun tersedia di dalam aplikasi**
-(Profil → Hapus Akun) ✅.
+Lembar jawab lengkapnya ada di **`DATA_SAFETY.md`** — per tipe data
+(collected/shared, tujuan, opsional, terenkripsi, bisa dihapus) beserta berkas
+buktinya, plus daftar tipe data yang **tidak** boleh dicentang (Location,
+Messages, Advertising ID, in-app search history).
+
+Dua hal yang paling sering membuat penolakan:
+1. **Tautan web hapus akun** — Play meminta jalur dalam aplikasi (sudah ada:
+   Profil → Hapus Akun) **dan** tautan web. Terbitkan `docs/hapus-akun.html`
+   ke `https://raratravel.id/hapus-akun/` lalu tulis URL-nya di formulir.
+2. **Crashlytics** — jawab jujur pada "can users request deletion?" untuk crash
+   logs (pilih *No*, atau aktifkan penghapusan berbasis instance dulu).
 
 ### 5.4 Uji regresi SDK baru (WAJIB, di HP fisik)
 

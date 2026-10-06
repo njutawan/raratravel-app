@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Memandu menempelkan 11 berkas migrasi ke Supabase SQL Editor (Windows).
+  Memandu menempelkan 12 berkas migrasi ke Supabase SQL Editor (Windows).
 
 .DESCRIPTION
   Untuk setiap berkas (urut nama), skrip:
@@ -48,10 +48,11 @@ $keterangan = [ordered]@{
   "202609140007_catalog_seed.sql"       = "seed: 17 kota, 12 rute, 6 kendaraan, 10 paket"
   "202609140008_storage.sql"            = "media_assets + 3 bucket Storage"
   "202609140009_admin.sql"              = "peran staf, impor data lama, statistik admin"
+  "202609140010_purge_user.sql"         = "purge_user_data: hapus data pribadi saat Hapus Akun (H-3)"
 }
 
 Write-Host ""
-Write-Host "Panduan menempel migrasi (11 berkas, urut nama)" -ForegroundColor Cyan
+Write-Host "Panduan menempel migrasi (12 berkas, urut nama)" -ForegroundColor Cyan
 Write-Host "Buka Dashboard → SQL Editor → New query. Setiap berkas: Ctrl+V lalu Run." -ForegroundColor DarkGray
 Write-Host ""
 
@@ -77,7 +78,7 @@ foreach ($b in $berkas) {
 
 # Bukti cepat: jumlah kota
 Write-Host ""
-Write-Host "Selesai menempel 11 berkas." -ForegroundColor Cyan
+Write-Host "Selesai menempel 12 berkas." -ForegroundColor Cyan
 Write-Host "Periksa: Table Editor → cities harus berisi 17 baris." -ForegroundColor DarkGray
 Write-Host ""
 Write-Host "Langkah berikutnya:" -ForegroundColor Cyan

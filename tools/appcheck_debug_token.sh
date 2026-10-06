@@ -14,9 +14,15 @@
 #   bash tools/appcheck_debug_token.sh          # cari token di logcat
 #   bash tools/appcheck_debug_token.sh --watch  # pantau logcat langsung
 #
-# Setelah token terlihat:
-#   Firebase Console → App Check → tab "Debug tokens" (atau menu aplikasi →
-#   Manage debug tokens) → tempel token → Simpan.
+# Setelah token terlihat — dua cara mendaftarkannya:
+#   1. OTOMATIS (disarankan):
+#        bash tools/appcheck_admin.sh --from-logcat
+#      (mengambil token dari logcat lalu memanggil App Check API; bisa juga
+#       --register <UUID> --name hp-uji bila token sudah disalin manual)
+#   2. MANUAL: Firebase Console → App Check → tab "Debug tokens" → tempel →
+#      Simpan.
+#
+# Cek hasilnya kapan saja:  bash tools/appcheck_admin.sh --status
 set -euo pipefail
 
 if ! command -v adb >/dev/null 2>&1; then
@@ -46,6 +52,9 @@ hasil="$(adb logcat -d | grep -iE "$pola" | tail -20 || true)"
 if [ -n "$hasil" ]; then
   echo "✅ Kandidat baris token (salin string panjangnya):"
   echo "$hasil"
+  echo ""
+  echo "Daftarkan sekaligus tanpa Console:"
+  echo "   bash tools/appcheck_admin.sh --from-logcat"
 else
   echo "⚠️  Belum ada baris App Check di logcat."
   echo "   1) Jalankan app debug dulu :  flutter run"

@@ -5,7 +5,7 @@ name: Backend check
 # dijalankan di dalam job lewat paket Python `pgserver`.
 #
 # Cakupan:
-#   * 11 migrasi supabase/migrations/*.sql
+#   * 12 migrasi supabase/migrations/*.sql
 #   * 17 kelompok uji perilaku (tools/db_smoke_test.sql)
 #   * kecocokan nama + parameter RPC dengan tanda tangan fungsi di database
 #   * impor relatif & nama ekspor Edge Function (tools/ts_check.js)

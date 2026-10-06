@@ -117,7 +117,7 @@ Ingin manual sepenuhnya? Urutannya sama:
 supabase link --project-ref <ref>
 supabase migration list              # melihat migrasi lokal ↔ remote
 supabase db push --dry-run           # melihat apa yang akan dijalankan
-supabase db push                     # menerapkan 202609120001 … 202609140009
+supabase db push                     # menerapkan 202609120001 … 202609140010
 ```
 
 ### 2.5 Jalur Dashboard (tanpa CLI) — lengkap
@@ -127,7 +127,7 @@ Semua dikerjakan dari peramban; berkas yang perlu ditempel sudah disiapkan.
 
 | Yang ditempel | Berkas | Jumlah |
 |---|---|---|
-| Skema database | `supabase/migrations/*.sql` (urut nama) | 11 |
+| Skema database | `supabase/migrations/*.sql` (urut nama) | 12 |
 | Edge Function | `supabase/deploy-dashboard/*.ts` (satu berkas per fungsi) | 10 |
 
 Dua skrip Windows membuat jalur ini jauh lebih ringkas (jalankan dari akar repo
@@ -177,9 +177,12 @@ fungsi berubah, buat ulang dengan `node tools/bundle_functions.js`
 | 9 | `202609140007_catalog_seed.sql` | 17 kota, 12 rute, 6 kendaraan, 10 paket |
 | 10 | `202609140008_storage.sql` | `media_assets` + bucket Storage |
 | 11 | `202609140009_admin.sql` | `require_staff`, impor data lama, statistik admin |
+| 12 | `202609140010_purge_user.sql` | `purge_user_data` + hapus berkas Storage — **wajib** agar Hapus Akun benar-benar menghapus data server (temuan H-3) |
 
 3. Periksa: **Table Editor** → `cities` berisi 17 baris; ada tabel `bookings`,
    `payments`, `user_devices`, `media_assets`. **Database → Functions** memuat
+   `purge_user_data` (bila tidak ada, migrasi ke-12 belum ditempel → tombol
+   Hapus Akun tidak menghapus data di server). **Database → Functions** memuat
    `create_booking`, `search_routes`, `catalog_cities`, dll.
 
 #### 2.5.2 Storage

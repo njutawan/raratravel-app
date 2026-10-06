@@ -78,7 +78,7 @@ cp .env.supabase.example .env.supabase   # isi project ref, password DB, project
 bash tools/setup_supabase.sh             # ada juga --check dan --step <n>
 ```
 
-Tanpa Supabase CLI? Semua bisa lewat Dashboard: tempel 11 berkas
+Tanpa Supabase CLI? Semua bisa lewat Dashboard: tempel 12 berkas
 `supabase/migrations/*.sql` di SQL Editor, lalu 10 berkas siap tempel
 `supabase/deploy-dashboard/*.ts` di Edge Functions (matikan “Verify JWT”).
 Langkah bergambarnya (termasuk tips PowerShell) ada di `MIGRASI_SUPABASE.md` §2.5.
@@ -139,6 +139,17 @@ Berkas terkait:
 | `tools/firestore/rules_test.mjs` | 13 uji keamanan `firestore.rules` di Firestore Emulator (H-1: titip pesanan ke akun lain, alih kepemilikan, dll.) |
 | `tools/check_firestore_rules.sh` | jalankan uji rules di komputer sendiri (butuh Java; CI sudah menjalankannya otomatis) |
 | `tools/set_keystore_secrets.sh` | simpan keystore rilis ke GitHub Secrets agar CI bisa membangun AAB bertanda tangan untuk Play (padanan Windows: `.ps1`) |
+| `tools/release_gate.sh` | satu perintah: jalankan SEMUA pemeriksaan lokal + cetak status 6 tugas rilis |
+| `tools/verify_published_rules.sh` | buktikan `firestore.rules` **sudah berlaku di server** (isi rules == repo, akses tanpa login ditolak) — penutup temuan H-1 |
+| `tools/appcheck_admin.sh` | App Check tanpa Console: status, daftarkan token debug, enforcement Firestore/Auth/Storage |
+| `tools/sms_region_policy.sh` | baca/setel SMS region policy Firebase Auth (pembatas biaya OTP) + batas kuota & metrik pantau |
+| `tools/backup_keystore.sh` | bundel backup keystore terenkripsi (AES-256) + `verify`/`restore` + checklist 2 tempat |
+| `tools/scan_secrets.py` | pemindai rahasia nyata (kunci privat, `sb_secret_`, JWT `service_role`) untuk berkas yang dilacak git |
+| `tools/gcp_token.sh` | access token Google (gcloud ADC atau service account JSON) untuk skrip API di atas |
+| `.github/workflows/deploy-firebase.yml` | publish `firestore.rules` + indexes lewat CI (gate: 13 uji emulator, lalu verifikasi) |
+| `.github/workflows/deploy-supabase.yml` | terapkan 12 migrasi + deploy 10 Edge Function lewat CI (ada mode `dry_run`) |
+| `DATA_SAFETY.md` | lembar jawab formulir **Data Safety** Play Console, per tipe data + bukti di kode |
+| `docs/hapus-akun.html` | halaman web permintaan hapus akun/data (syarat Play; terbitkan lalu isi URL-nya di Console) |
 | `apk/TERBARU.md` | penunjuk APK terbaru: tautan *Releases*, ukuran, dan SHA-256. Berkas APK **tidak** disimpan di git (dulu ±60 MB per versi) |
 
 Uji backend tanpa Docker/Supabase CLI (butuh Python 3 + `pgserver`):
@@ -149,6 +160,23 @@ python3 -m venv /tmp/venv
 /tmp/venv/bin/python tools/db_check.py      # migrasi + 18 kelompok uji + kecocokan RPC
 node tools/ts_check.js                      # impor & nama ekspor Edge Function
 node tools/e2e/run_e2e.mts                  # Edge Function benar-benar dijalankan
+```
+
+Satu perintah untuk memeriksa semuanya sebelum rilis (rahasia, Edge Function,
+migrasi, rules, keystore, artefak Play) — lalu mencetak apa yang masih harus
+dijalankan dengan kredensialmu:
+
+```bash
+bash tools/release_gate.sh               # ada juga --cepat
+```
+
+Deploy ke proyek nyata (butuh secrets; lihat `RILIS_PRODUKSI.md`):
+
+```bash
+gh workflow run deploy-supabase.yml -f dry_run=true   # lihat dulu, tidak mengubah
+gh workflow run deploy-supabase.yml                   # 12 migrasi + 10 Edge Function
+gh workflow run deploy-firebase.yml                   # publish firestore.rules + indexes
+bash tools/verify_published_rules.sh                  # bukti rules benar-benar berlaku
 ```
 
 Jalankan juga uji aturan Firestore di emulator (butuh Java — sudah ada bersama
